@@ -9,6 +9,7 @@ pub enum Expr {
     Int(i64),
     UnrFn(UnrOp, Box<Expr>),
     BinFn(Box<Expr>, BinOp, Box<Expr>),
+    Str(String),
 }
 
 impl Expr {
@@ -19,6 +20,11 @@ impl Expr {
                     Some(col) => Ok(col.clone()),
                     None => Err("cannot find col"),
                 }
+            }
+            Expr::Str(ref s) => {
+                let name = s.clone();
+                let val = Val::Str(s.clone());
+                Ok(Column::from(name, val))
             }
             Expr::Int(val) => Ok(Column::from("c", Val::Int(val))),
             Expr::UnrFn(UnrOp::Sum, box Expr::Id(ref id)) => {
@@ -77,6 +83,11 @@ impl Expr {
                 };
                 return col.products();
             }                                                
+            Expr::BinFn(box Expr::Str(ref lhs), BinOp::Add, box Expr::Str(ref rhs)) => {
+                let val = lhs.to_string() + &rhs;
+                let name = val.clone();
+                return Ok(Column::from(name, Val::Str(val)));
+            }
             Expr::BinFn(box Expr::Id(ref id1), BinOp::Add, box Expr::Id(ref id2)) => {
                 let (lhs, rhs) = match tbl.get_2(id1, id2) {
                     Some(cols) => cols,
@@ -114,7 +125,7 @@ impl Expr {
 pub enum BinOp {
     Add,
     Sub,
-    Mul, 
+    Mul,
     Div,
 }
 
@@ -263,7 +274,7 @@ impl Column {
         let name = self.name.clone() + " / " + &rhs.name;
         let val = self.val.div(&rhs.val)?;
         Ok(Column::from(name, val))
-    }    
+    }
 
     fn sum(&self) -> Result<Column, &'static str> {
         let name = "sum(".to_string() + &self.name + ")";
@@ -275,7 +286,7 @@ impl Column {
         let name = "sums(".to_string() + &self.name + ")";
         let val = self.val.sums()?;
         Ok(Column::from(name, val))
-    }    
+    }
 
     fn min(&self) -> Result<Column, &'static str> {
         let name = "min(".to_string() + &self.name + ")";
@@ -287,7 +298,7 @@ impl Column {
         let name = "min(".to_string() + &self.name + ")";
         let val = self.val.mins()?;
         Ok(Column::from(name, val))
-    }    
+    }
 
     fn max(&self) -> Result<Column, &'static str> {
         let name = "max(".to_string() + &self.name + ")";
@@ -299,7 +310,7 @@ impl Column {
         let name = "max(".to_string() + &self.name + ")";
         let val = self.val.maxs()?;
         Ok(Column::from(name, val))
-    }    
+    }
 
     fn product(&self) -> Result<Column, &'static str> {
         let name = "product(".to_string() + &self.name + ")";
@@ -311,7 +322,7 @@ impl Column {
         let name = "product(".to_string() + &self.name + ")";
         let val = self.val.products()?;
         Ok(Column::from(name, val))
-    }    
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -349,7 +360,7 @@ impl Val {
             _ => return Err(()),
         };
         Ok(val)
-    }    
+    }
 
     pub fn div(&self, rhs: &Val) -> Result<Val, ()> {
         let val = match (self, rhs) {
@@ -358,7 +369,7 @@ impl Val {
             _ => return Err(()),
         };
         Ok(val)
-    } 
+    }
 
     fn sum(&self) -> Result<Val, &'static str> {
         let val = match *self {
@@ -378,7 +389,7 @@ impl Val {
             Val::StrVec(_) => return Err("cannot sum strvec"),
         };
         Ok(val)
-    }    
+    }
 
     fn max(&self) -> Result<Val, &'static str> {
         let val = match *self {
@@ -396,7 +407,7 @@ impl Val {
             _ => unimplemented!(),
         };
         Ok(val)
-    }    
+    }
 
     fn min(&self) -> Result<Val, &'static str> {
         let val = match *self {
@@ -414,7 +425,7 @@ impl Val {
             _ => unimplemented!(),
         };
         Ok(val)
-    }    
+    }
 
     fn product(&self) -> Result<Val, &'static str> {
         let val = match *self {
@@ -432,7 +443,7 @@ impl Val {
             _ => unimplemented!(),
         };
         Ok(val)
-    }    
+    }
 }
 
 #[inline]
@@ -469,7 +480,7 @@ fn vec_maxs<T: Ord + Copy>(v: &[T]) -> Vec<T> {
 }
 
 #[inline]
-fn vec_products<T: Ord + Copy + Mul<Output=T>>(v: &[T]) -> Vec<T> {
+fn vec_products<T: Ord + Copy + Mul<Output = T>>(v: &[T]) -> Vec<T> {
     assert!(!v.is_empty());
     let mut product = v[0];
     let mut products = Vec::with_capacity(v.len());
@@ -482,7 +493,7 @@ fn vec_products<T: Ord + Copy + Mul<Output=T>>(v: &[T]) -> Vec<T> {
 }
 
 #[inline]
-fn vec_sums<T: Ord + Copy + Add<Output=T>>(v: &[T]) -> Vec<T> {
+fn vec_sums<T: Ord + Copy + Add<Output = T>>(v: &[T]) -> Vec<T> {
     assert!(!v.is_empty());
     let mut sum = v[0];
     let mut sums = Vec::with_capacity(v.len());
@@ -548,7 +559,7 @@ mod tests {
         let n = COL_LEN;
         let a = Column::from("a", Val::IntVec(vec![1; n]));
         let b = Column::from("b", Val::IntVec(vec![1; n]));
-        let c = Column::from("c", Val::IntVec(vec![1,2,3,4,5,6,7,8,9,10]));
+        let c = Column::from("c", Val::IntVec(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
         let cols = vec![a, b, c];
         Table::from(id.into(), cols)
     }
@@ -599,6 +610,15 @@ mod tests {
     }
 
     #[test]
+    fn col_sums() {
+        let a = Column::from("a", Val::IntVec(vec![1; 5]));
+        assert_eq!(
+            a.sums().unwrap(),
+            Column::from("sums(a)", Val::IntVec(vec![1, 2, 3, 4, 5]))
+        );
+    }
+
+    #[test]
     fn table_get() {
         let n = COL_LEN;
         let a = Column::from("a", Val::IntVec(vec![1; n]));
@@ -634,7 +654,7 @@ mod tests {
         let expr = Expr::UnrFn(UnrOp::Max, arg);
         let col = Column::from("max(c)", Val::Int(10));
         assert_eq!(expr.eval(&tbl).unwrap(), col);
-    }    
+    }
 
     #[test]
     fn min_expr_eval() {
@@ -643,7 +663,7 @@ mod tests {
         let expr = Expr::UnrFn(UnrOp::Min, arg);
         let col = Column::from("min(c)", Val::Int(1));
         assert_eq!(expr.eval(&tbl).unwrap(), col);
-    }        
+    }
 
     #[test]
     fn col_add_expr_eval() {
@@ -710,6 +730,27 @@ mod tests {
     }
 
     #[test]
+    fn val_int_sum() {
+        let val = Val::Int(1);
+        let sum = val.sum().unwrap();
+        assert_eq!(sum, Val::Int(1));
+    }
+
+    #[test]
+    fn val_intvec_sums() {
+        let val = Val::IntVec(vec![1, 2, 3, 4, 5]);
+        let sums = val.sums().unwrap();
+        assert_eq!(sums, Val::IntVec(vec![1, 3, 6, 10, 15]));
+    }
+
+    #[test]
+    fn val_int_sums() {
+        let val = Val::Int(1);
+        let sums = val.sum().unwrap();
+        assert_eq!(sums, Val::Int(1));
+    }
+
+    #[test]
     fn val_intvec_max() {
         let vec = vec![1, 2, 3, 4, 5];
         let val = Val::IntVec(vec);
@@ -726,9 +767,58 @@ mod tests {
     }
 
     #[test]
-    fn val_int_sum() {
+    fn val_int_maxs() {
         let val = Val::Int(1);
-        let sum = val.sum().unwrap();
-        assert_eq!(sum, Val::Int(1));
+        let maxs = val.maxs().unwrap();
+        assert_eq!(maxs, Val::Int(1));
+    }
+
+    #[test]
+    fn val_intvec_maxs() {
+        let val = Val::IntVec(vec![1, 2, 1, 3, 1, 4]);
+        let maxs = val.maxs().unwrap();
+        assert_eq!(maxs, Val::IntVec(vec![1, 2, 2, 3, 3, 4]));
+    }
+
+    #[test]
+    fn val_int_mins() {
+        let val = Val::Int(1);
+        let mins = val.mins().unwrap();
+        assert_eq!(mins, Val::Int(1));
+    }
+
+    #[test]
+    fn val_intvec_mins() {
+        let val = Val::IntVec(vec![1, 2, 1, 3, 0, 4]);
+        let mins = val.mins().unwrap();
+        assert_eq!(mins, Val::IntVec(vec![1, 1, 1, 1, 0, 0]));
+    }
+
+    #[test]
+    fn val_int_products() {
+        let val = Val::Int(1);
+        let res = val.mins().unwrap();
+        assert_eq!(res, Val::Int(1));
+    }
+
+    #[test]
+    fn val_intvec_products() {
+        let val = Val::IntVec(vec![1, 2, 3, 4, 5]);
+        let res = val.products().unwrap();
+        assert_eq!(res, Val::IntVec(vec![1, 2, 6, 24, 120]));
+    }
+
+    #[test]
+    fn val_intvec_product() {
+        let val = Val::IntVec(vec![1, 2, 3, 4, 5]);
+        let res = val.product().unwrap();
+        assert_eq!(res, Val::Int(120));
+    }
+
+    #[test]
+    fn val_int_product() {
+        let val = Val::Int(123);
+        let res = val.product().unwrap();
+        assert_eq!(res, Val::Int(123));
     }
 }

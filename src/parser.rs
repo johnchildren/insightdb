@@ -1,4 +1,4 @@
-use engine::{Expr,Query, BinOp, UnrOp};
+use engine::{Expr, Query, BinOp, UnrOp};
 
 #[derive(Debug, PartialEq)]
 enum Token {
@@ -24,7 +24,8 @@ enum Token {
     Product,
     Products,
     Mul,
-    Div
+    Div,
+    StrLit(String),
 }
 
 #[derive(Debug)]
@@ -36,9 +37,9 @@ struct Scanner {
 
 impl Scanner {
     fn new(s: &str) -> Self {
-        Scanner { 
-            cmd: s.chars().collect() ,
-            pos: 0,    
+        Scanner {
+            cmd: s.chars().collect(),
+            pos: 0,
             tok: Token::Underscore,
         }
     }
@@ -54,22 +55,40 @@ impl Scanner {
             Some('+') => Token::Add,
             Some('-') => Token::Sub,
             Some('*') => Token::Mul,
-            Some('/') => Token::Div,            
+            Some('/') => Token::Div,   
+            Some('"') => return self.scan_str_literal(),         
             Some(c) => {
                 println!("unexpected char={:?}", c);
                 return Err("unexpected token");
             }
             None => Token::EOF,
         };
-        self.pos += 1;                
+        self.pos += 1;
         Ok(token)
+    }
+
+    fn scan_str_literal(&mut self) -> Result<Token, &'static str> {
+        self.pos += 1;
+        let mut lit = String::new();
+        loop {
+            match self.cur_char() {
+                Some('"') => {
+                    self.pos += 1;
+                    break;
+                }
+                Some(c) => lit.push(c),
+                None => return Err("unclosed string literal"),
+            }
+            self.pos += 1;
+        }
+        Ok(Token::StrLit(lit))
     }
 
     fn scan_number(&mut self) -> Result<Token, &'static str> {
         let mut s = String::new();
         loop {
             match self.cur_char() {
-                Some(c@'0'..'9') => s.push(c),
+                Some(c @ '0'..'9') => s.push(c),
                 Some('+') | Some('-') | Some('*') | Some('/') | Some(' ') | None => break,
                 Some(_) => return Err("unexpected digit"),                
             }
@@ -98,12 +117,13 @@ impl Scanner {
         }
     }
 
-    fn scan_id_or_keyword(&mut self) -> Result<Token,  &'static str> {
+    fn scan_id_or_keyword(&mut self) -> Result<Token, &'static str> {
         let mut id = String::new();
         loop {
             match self.cur_char() {
-                Some('(') | Some(')') | Some(' ') | Some(',') | Some('+') | Some('-') | None => break,
-                Some(c) => id.push(c) 
+                Some('(') | Some(')') | Some(' ') | Some(',') | Some('+') | Some('-') |
+                Some('*') | Some('/') | None => break,
+                Some(c) => id.push(c), 
             }
             self.pos += 1;
         }
@@ -120,7 +140,7 @@ impl Scanner {
             "min" => Token::Min,
             "maxs" => Token::Maxs,
             "mins" => Token::Mins,
-            _ => Token::Id(id)
+            _ => Token::Id(id),
         };
         Ok(tok)
     }
@@ -166,7 +186,7 @@ impl Parser {
                     let _ = self.scanner.next_token().unwrap();
                 }
                 Err(err) => return Err(err),
-                Ok(_) =>break,
+                Ok(_) => break,
             }
         }
         Ok(exprs)
@@ -183,8 +203,8 @@ impl Parser {
             Ok(Token::RParen) => (),
             Ok(_) => return Err("expected rparen"),
             Err(err) => return Err(err),
-        }    
-        Ok(Expr::UnrFn(op, Box::new(expr)))    
+        }
+        Ok(Expr::UnrFn(op, Box::new(expr)))
     }
 
     #[inline]
@@ -204,42 +224,43 @@ impl Parser {
                     Err(err) => return Err(err),
                 }
             }            
-           Ok(Token::Product) => {
+            Ok(Token::Product) => {
                 match self.parse_unr_fn(UnrOp::Product) {
                     Ok(expr) => expr,
                     Err(err) => return Err(err),
                 }
             }
-           Ok(Token::Products) => {
+            Ok(Token::Products) => {
                 match self.parse_unr_fn(UnrOp::Products) {
                     Ok(expr) => expr,
                     Err(err) => return Err(err),
                 }
             }            
-           Ok(Token::Min) => {
+            Ok(Token::Min) => {
                 match self.parse_unr_fn(UnrOp::Min) {
                     Ok(expr) => expr,
                     Err(err) => return Err(err),
                 }
             }
-           Ok(Token::Mins) => {
+            Ok(Token::Mins) => {
                 match self.parse_unr_fn(UnrOp::Mins) {
                     Ok(expr) => expr,
                     Err(err) => return Err(err),
                 }
             }                
-           Ok(Token::Max) => {
+            Ok(Token::Max) => {
                 match self.parse_unr_fn(UnrOp::Max) {
                     Ok(expr) => expr,
                     Err(err) => return Err(err),
                 }
             }  
-           Ok(Token::Maxs) => {
+            Ok(Token::Maxs) => {
                 match self.parse_unr_fn(UnrOp::Maxs) {
                     Ok(expr) => expr,
                     Err(err) => return Err(err),
                 }
-            }                                                           
+            }     
+            Ok(Token::StrLit(lit)) => Expr::Str(lit),                              
             Ok(_) => unimplemented!(),
             Err(err) => return Err(err),
         };
@@ -278,7 +299,7 @@ impl Parser {
         match self.peek_next_token() {
             Ok(Token::By) => {
                 let _ = self.next_token().unwrap();
-            },
+            }
             Ok(_) => return Ok(None),
             Err(err) => return Err(err),
         }
@@ -346,9 +367,9 @@ fn scan_select_token() {
     let mut scanner = Scanner::new("select");
     assert_eq!(scanner.next_token(), Ok(Token::Select));
     scanner = Scanner::new("  select");
-    assert_eq!(scanner.next_token(), Ok(Token::Select));    
+    assert_eq!(scanner.next_token(), Ok(Token::Select));
     scanner = Scanner::new("  select   ");
-    assert_eq!(scanner.next_token(), Ok(Token::Select));        
+    assert_eq!(scanner.next_token(), Ok(Token::Select));
 }
 
 #[test]
@@ -422,7 +443,10 @@ fn parse_select_expr() {
 #[test]
 fn parse_by_expr() {
     let mut parser = Parser::new("by c");
-    assert_eq!(parser.parse_by(), Ok(Some(vec![Expr::Id(String::from("c"))])));
+    assert_eq!(
+        parser.parse_by(),
+        Ok(Some(vec![Expr::Id(String::from("c"))]))
+    );
 }
 
 #[test]
@@ -438,13 +462,28 @@ fn parse_where_expr() {
 }
 
 #[test]
+fn parse_str_literal_expr() {
+    let mut parser = Parser::new("\"asc123[]\"");
+    assert_eq!(
+        parser.parse_expr().unwrap(),
+        Expr::Str(String::from("asc123[]"))
+    );
+}
+
+#[test]
 fn parse_query() {
     let mut parser = Parser::new("select b,c by a from t where f1,f2");
     let select = vec![Expr::Id(String::from("b")), Expr::Id(String::from("c"))];
     let by = Some(vec![Expr::Id(String::from("a"))]);
     let from = Expr::Id(String::from("t"));
-    let filters = Some(vec![Expr::Id(String::from("f1")), Expr::Id(String::from("f2"))]);
-    assert_eq!(parser.parse().unwrap(), Query::from(select, by, from, filters));
+    let filters = Some(vec![
+        Expr::Id(String::from("f1")),
+        Expr::Id(String::from("f2")),
+    ]);
+    assert_eq!(
+        parser.parse().unwrap(),
+        Query::from(select, by, from, filters)
+    );
 }
 
 #[test]
@@ -484,10 +523,90 @@ fn parse_add_int_int_expr() {
 }
 
 #[test]
+fn parse_sub_cols_expr() {
+    let mut parser = Parser::new("a-b");
+    let lhs = Box::new(Expr::Id(String::from("a")));
+    let rhs = Box::new(Expr::Id(String::from("b")));
+    let expr = Expr::BinFn(lhs, BinOp::Sub, rhs);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_sub_col_int_expr() {
+    let mut parser = Parser::new("a-123");
+    let lhs = Box::new(Expr::Id(String::from("a")));
+    let rhs = Box::new(Expr::Int(123));
+    let expr = Expr::BinFn(lhs, BinOp::Sub, rhs);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_sub_int_col_expr() {
+    let mut parser = Parser::new("123-a");
+    let rhs = Box::new(Expr::Id(String::from("a")));
+    let lhs = Box::new(Expr::Int(123));
+    let expr = Expr::BinFn(lhs, BinOp::Sub, rhs);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_sub_int_int_expr() {
+    let mut parser = Parser::new("123-456");
+    let rhs = Box::new(Expr::Int(456));
+    let lhs = Box::new(Expr::Int(123));
+    let expr = Expr::BinFn(lhs, BinOp::Sub, rhs);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_mul_cols_expr() {
+    let mut parser = Parser::new("a*b");
+    let lhs = Box::new(Expr::Id(String::from("a")));
+    let rhs = Box::new(Expr::Id(String::from("b")));
+    let expr = Expr::BinFn(lhs, BinOp::Mul, rhs);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_mul_col_int_expr() {
+    let mut parser = Parser::new("a*123");
+    let lhs = Box::new(Expr::Id(String::from("a")));
+    let rhs = Box::new(Expr::Int(123));
+    let expr = Expr::BinFn(lhs, BinOp::Mul, rhs);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_mul_int_col_expr() {
+    let mut parser = Parser::new("123*a");
+    let rhs = Box::new(Expr::Id(String::from("a")));
+    let lhs = Box::new(Expr::Int(123));
+    let expr = Expr::BinFn(lhs, BinOp::Mul, rhs);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_mul_int_int_expr() {
+    let mut parser = Parser::new("123*456");
+    let rhs = Box::new(Expr::Int(456));
+    let lhs = Box::new(Expr::Int(123));
+    let expr = Expr::BinFn(lhs, BinOp::Mul, rhs);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
 fn parse_sum_expr() {
     let mut parser = Parser::new("sum(a)");
     let arg = Box::new(Expr::Id(String::from("a")));
     let expr = Expr::UnrFn(UnrOp::Sum, arg);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_sums_expr() {
+    let mut parser = Parser::new("sums(a)");
+    let arg = Box::new(Expr::Id(String::from("a")));
+    let expr = Expr::UnrFn(UnrOp::Sums, arg);
     assert_eq!(parser.parse_expr().unwrap(), expr);
 }
 
@@ -500,9 +619,41 @@ fn parse_max_expr() {
 }
 
 #[test]
+fn parse_maxs_expr() {
+    let mut parser = Parser::new("maxs(a)");
+    let arg = Box::new(Expr::Id(String::from("a")));
+    let expr = Expr::UnrFn(UnrOp::Maxs, arg);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
 fn parse_min_expr() {
     let mut parser = Parser::new("min(a)");
     let arg = Box::new(Expr::Id(String::from("a")));
     let expr = Expr::UnrFn(UnrOp::Min, arg);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_mins_expr() {
+    let mut parser = Parser::new("mins(a)");
+    let arg = Box::new(Expr::Id(String::from("a")));
+    let expr = Expr::UnrFn(UnrOp::Mins, arg);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_product_expr() {
+    let mut parser = Parser::new("product(a)");
+    let arg = Box::new(Expr::Id(String::from("a")));
+    let expr = Expr::UnrFn(UnrOp::Product, arg);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_products_expr() {
+    let mut parser = Parser::new("products(a)");
+    let arg = Box::new(Expr::Id(String::from("a")));
+    let expr = Expr::UnrFn(UnrOp::Products, arg);
     assert_eq!(parser.parse_expr().unwrap(), expr);
 }
