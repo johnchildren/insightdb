@@ -477,15 +477,18 @@ mod tests {
     }
 
     #[test]
-    fn query_select_by_from_exec() {
+    fn query_select_aggs_from_exec() {
         let db = test_db();
-        let qry = Query::from_str("select a+a, b-b by c from t1").unwrap();
-        let col1 = Column::from("a + a", Val::IntVec(vec![2; COL_LEN]));
-        let col2 = Column::from("b - b", Val::IntVec(vec![0; COL_LEN]));
-        let exp = Table::from("t1", vec![col1, col2]);
+        let qry = Query::from_str("select max(c), min(c), sum(a), product(c) from t1").unwrap();
+        let col1 = Column::from("max(c)", Val::Int(10));
+        let col2 = Column::from("min(c)", Val::Int(1));
+        let col3 = Column::from("sum(a)", Val::Int(10));
+        let col4 = Column::from("product(c)", Val::Int(3_628_800));
+        let exp = Table::from("t1", vec![col1, col2, col3, col4]);
         let tbl = qry.exec(&db).unwrap();
         assert_eq!(tbl, exp);
     }
+
     #[test]
     fn val_intvec_sum() {
         let n = 10;
