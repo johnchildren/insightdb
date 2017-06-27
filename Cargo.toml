@@ -1,0 +1,6 @@
+[package]
+name = "insightdb"
+version = "0.1.0"
+authors = ["jaupe"]
+
+[dependencies]
