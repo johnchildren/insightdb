@@ -18,9 +18,13 @@ enum Token {
     Sum,
     Sums,
     Max,
+    Maxs,
     Min,
+    Mins,
     Product,
     Products,
+    Mul,
+    Div
 }
 
 #[derive(Debug)]
@@ -49,6 +53,8 @@ impl Scanner {
             Some('0'..'9') => return self.scan_number(),
             Some('+') => Token::Add,
             Some('-') => Token::Sub,
+            Some('*') => Token::Mul,
+            Some('/') => Token::Div,            
             Some(c) => {
                 println!("unexpected char={:?}", c);
                 return Err("unexpected token");
@@ -112,6 +118,8 @@ impl Scanner {
             "products" => Token::Products,
             "max" => Token::Max,
             "min" => Token::Min,
+            "maxs" => Token::Maxs,
+            "mins" => Token::Mins,
             _ => Token::Id(id)
         };
         Ok(tok)
@@ -190,24 +198,48 @@ impl Parser {
                     Err(err) => return Err(err),
                 }
             }
+            Ok(Token::Sums) => {
+                match self.parse_unr_fn(UnrOp::Sums) {
+                    Ok(expr) => expr,
+                    Err(err) => return Err(err),
+                }
+            }            
            Ok(Token::Product) => {
-                match self.parse_unr_fn(UnrOp::Prod) {
+                match self.parse_unr_fn(UnrOp::Product) {
                     Ok(expr) => expr,
                     Err(err) => return Err(err),
                 }
             }
+           Ok(Token::Products) => {
+                match self.parse_unr_fn(UnrOp::Products) {
+                    Ok(expr) => expr,
+                    Err(err) => return Err(err),
+                }
+            }            
            Ok(Token::Min) => {
                 match self.parse_unr_fn(UnrOp::Min) {
                     Ok(expr) => expr,
                     Err(err) => return Err(err),
                 }
-            }    
+            }
+           Ok(Token::Mins) => {
+                match self.parse_unr_fn(UnrOp::Mins) {
+                    Ok(expr) => expr,
+                    Err(err) => return Err(err),
+                }
+            }                
            Ok(Token::Max) => {
                 match self.parse_unr_fn(UnrOp::Max) {
                     Ok(expr) => expr,
                     Err(err) => return Err(err),
                 }
-            }                        
+            }  
+           Ok(Token::Maxs) => {
+                match self.parse_unr_fn(UnrOp::Maxs) {
+                    Ok(expr) => expr,
+                    Err(err) => return Err(err),
+                }
+            }                                                           
             Ok(_) => unimplemented!(),
             Err(err) => return Err(err),
         };
@@ -215,6 +247,8 @@ impl Parser {
         let op = match self.peek_next_token() {
             Ok(Token::Add) => BinOp::Add,
             Ok(Token::Sub) => BinOp::Sub,
+            Ok(Token::Mul) => BinOp::Mul,
+            Ok(Token::Div) => BinOp::Div,            
             Ok(_) => return Ok(lhs),
             Err(err) => return Err(err),
         };

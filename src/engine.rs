@@ -1,4 +1,5 @@
-use std::ops::{Add, Sub, Mul};
+use std::cmp;
+use std::ops::{Add, Sub, Mul, Div};
 
 use parser::Parser;
 
@@ -27,6 +28,13 @@ impl Expr {
                 };
                 return col.sum();
             }
+            Expr::UnrFn(UnrOp::Sums, box Expr::Id(ref id)) => {
+                let col = match tbl.get(id) {
+                    Some(col) => col,
+                    None => return Err("cannot find col"),
+                };
+                return col.sums();
+            }            
             Expr::UnrFn(UnrOp::Min, box Expr::Id(ref id)) => {
                 let col = match tbl.get(id) {
                     Some(col) => col,
@@ -34,6 +42,13 @@ impl Expr {
                 };
                 return col.min();
             }   
+            Expr::UnrFn(UnrOp::Mins, box Expr::Id(ref id)) => {
+                let col = match tbl.get(id) {
+                    Some(col) => col,
+                    None => return Err("cannot find col"),
+                };
+                return col.mins();
+            }               
             Expr::UnrFn(UnrOp::Max, box Expr::Id(ref id)) => {
                 let col = match tbl.get(id) {
                     Some(col) => col,
@@ -41,13 +56,27 @@ impl Expr {
                 };
                 return col.max();
             } 
-            Expr::UnrFn(UnrOp::Prod, box Expr::Id(ref id)) => {
+            Expr::UnrFn(UnrOp::Maxs, box Expr::Id(ref id)) => {
+                let col = match tbl.get(id) {
+                    Some(col) => col,
+                    None => return Err("cannot find col"),
+                };
+                return col.maxs();
+            }             
+            Expr::UnrFn(UnrOp::Product, box Expr::Id(ref id)) => {
                 let col = match tbl.get(id) {
                     Some(col) => col,
                     None => return Err("cannot find col"),
                 };
                 return col.product();
-            }                                    
+            }  
+            Expr::UnrFn(UnrOp::Products, box Expr::Id(ref id)) => {
+                let col = match tbl.get(id) {
+                    Some(col) => col,
+                    None => return Err("cannot find col"),
+                };
+                return col.products();
+            }                                                
             Expr::BinFn(box Expr::Id(ref id1), BinOp::Add, box Expr::Id(ref id2)) => {
                 let (lhs, rhs) = match tbl.get_2(id1, id2) {
                     Some(cols) => cols,
@@ -61,7 +90,21 @@ impl Expr {
                     None => return Err("cannot find cols"),
                 };
                 lhs.sub(rhs).map_err(|_| "cannot evaluate col sub")
-            }            
+            }    
+            Expr::BinFn(box Expr::Id(ref id1), BinOp::Mul, box Expr::Id(ref id2)) => {
+                let (lhs, rhs) = match tbl.get_2(id1, id2) {
+                    Some(cols) => cols,
+                    None => return Err("cannot find cols"),
+                };
+                lhs.mul(rhs).map_err(|_| "cannot evaluate col sub")
+            }    
+            Expr::BinFn(box Expr::Id(ref id1), BinOp::Div, box Expr::Id(ref id2)) => {
+                let (lhs, rhs) = match tbl.get_2(id1, id2) {
+                    Some(cols) => cols,
+                    None => return Err("cannot find cols"),
+                };
+                lhs.div(rhs).map_err(|_| "cannot evaluate col sub")
+            }                                    
             _ => unimplemented!(),
         }
     }
@@ -71,6 +114,8 @@ impl Expr {
 pub enum BinOp {
     Add,
     Sub,
+    Mul, 
+    Div,
 }
 
 #[derive(Debug, PartialEq)]
@@ -82,8 +127,8 @@ pub enum UnrOp {
     Min,
     Mins,
     Avg,
-    Prod,
-    Prods,
+    Product,
+    Products,
 }
 
 #[derive(Debug, PartialEq)]
@@ -208,11 +253,29 @@ impl Column {
         Ok(Column::from(name, val))
     }
 
+    pub fn mul(&self, rhs: &Column) -> Result<Column, ()> {
+        let name = self.name.clone() + " * " + &rhs.name;
+        let val = self.val.mul(&rhs.val)?;
+        Ok(Column::from(name, val))
+    }
+
+    pub fn div(&self, rhs: &Column) -> Result<Column, ()> {
+        let name = self.name.clone() + " / " + &rhs.name;
+        let val = self.val.div(&rhs.val)?;
+        Ok(Column::from(name, val))
+    }    
+
     fn sum(&self) -> Result<Column, &'static str> {
         let name = "sum(".to_string() + &self.name + ")";
         let val = self.val.sum()?;
         Ok(Column::from(name, val))
     }
+
+    fn sums(&self) -> Result<Column, &'static str> {
+        let name = "sums(".to_string() + &self.name + ")";
+        let val = self.val.sums()?;
+        Ok(Column::from(name, val))
+    }    
 
     fn min(&self) -> Result<Column, &'static str> {
         let name = "min(".to_string() + &self.name + ")";
@@ -220,17 +283,35 @@ impl Column {
         Ok(Column::from(name, val))
     }
 
+    fn mins(&self) -> Result<Column, &'static str> {
+        let name = "min(".to_string() + &self.name + ")";
+        let val = self.val.mins()?;
+        Ok(Column::from(name, val))
+    }    
+
     fn max(&self) -> Result<Column, &'static str> {
         let name = "max(".to_string() + &self.name + ")";
         let val = self.val.max()?;
         Ok(Column::from(name, val))
     }
 
+    fn maxs(&self) -> Result<Column, &'static str> {
+        let name = "max(".to_string() + &self.name + ")";
+        let val = self.val.maxs()?;
+        Ok(Column::from(name, val))
+    }    
+
     fn product(&self) -> Result<Column, &'static str> {
         let name = "product(".to_string() + &self.name + ")";
         let val = self.val.product()?;
         Ok(Column::from(name, val))
     }
+
+    fn products(&self) -> Result<Column, &'static str> {
+        let name = "product(".to_string() + &self.name + ")";
+        let val = self.val.products()?;
+        Ok(Column::from(name, val))
+    }    
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -261,6 +342,24 @@ impl Val {
         Ok(val)
     }
 
+    pub fn mul(&self, rhs: &Val) -> Result<Val, ()> {
+        let val = match (self, rhs) {
+            (&Val::IntVec(ref lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_mul(lhs, rhs)),
+            (&Val::IntVec(ref lhs), &Val::Int(rhs)) => Val::IntVec(vec_scalar_mul(lhs, rhs)),
+            _ => return Err(()),
+        };
+        Ok(val)
+    }    
+
+    pub fn div(&self, rhs: &Val) -> Result<Val, ()> {
+        let val = match (self, rhs) {
+            (&Val::IntVec(ref lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_div(lhs, rhs)),
+            (&Val::IntVec(ref lhs), &Val::Int(rhs)) => Val::IntVec(vec_scalar_div(lhs, rhs)),
+            _ => return Err(()),
+        };
+        Ok(val)
+    } 
+
     fn sum(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
@@ -271,6 +370,16 @@ impl Val {
         Ok(val)
     }
 
+    fn sums(&self) -> Result<Val, &'static str> {
+        let val = match *self {
+            Val::Int(val) => Val::Int(val),
+            Val::IntVec(ref vec) => Val::IntVec(vec_sums(vec)),
+            Val::Str(_) => return Err("cannot sum str"),
+            Val::StrVec(_) => return Err("cannot sum strvec"),
+        };
+        Ok(val)
+    }    
+
     fn max(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
@@ -279,6 +388,15 @@ impl Val {
         };
         Ok(val)
     }
+
+    fn maxs(&self) -> Result<Val, &'static str> {
+        let val = match *self {
+            Val::Int(val) => Val::Int(val),
+            Val::IntVec(ref vec) => Val::IntVec(vec_maxs(vec)),
+            _ => unimplemented!(),
+        };
+        Ok(val)
+    }    
 
     fn min(&self) -> Result<Val, &'static str> {
         let val = match *self {
@@ -289,6 +407,15 @@ impl Val {
         Ok(val)
     }
 
+    fn mins(&self) -> Result<Val, &'static str> {
+        let val = match *self {
+            Val::Int(val) => Val::Int(val),
+            Val::IntVec(ref vec) => Val::IntVec(vec_mins(vec)),
+            _ => unimplemented!(),
+        };
+        Ok(val)
+    }    
+
     fn product(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
@@ -297,22 +424,107 @@ impl Val {
         };
         Ok(val)
     }
+
+    fn products(&self) -> Result<Val, &'static str> {
+        let val = match *self {
+            Val::Int(val) => Val::Int(val),
+            Val::IntVec(ref vec) => Val::IntVec(vec_products(vec)),
+            _ => unimplemented!(),
+        };
+        Ok(val)
+    }    
 }
 
+#[inline]
 fn vec_add<T: Add<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
     a.iter().zip(b.iter()).map(|(x, y)| *x + *y).collect()
 }
 
+#[inline]
 fn vec_sub<T: Sub<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
     a.iter().zip(b.iter()).map(|(x, y)| *x - *y).collect()
 }
 
+#[inline]
+fn vec_mul<T: Mul<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
+    a.iter().zip(b.iter()).map(|(x, y)| *x * *y).collect()
+}
+
+#[inline]
+fn vec_div<T: Div<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
+    a.iter().zip(b.iter()).map(|(x, y)| *x / *y).collect()
+}
+
+#[inline]
+fn vec_maxs<T: Ord + Copy>(v: &[T]) -> Vec<T> {
+    assert!(!v.is_empty());
+    let mut max = v[0];
+    let mut maxs = Vec::with_capacity(v.len());
+    maxs.push(max);
+    for val in &v[1..] {
+        max = cmp::max(max, *val);
+        maxs.push(max);
+    }
+    maxs
+}
+
+#[inline]
+fn vec_products<T: Ord + Copy + Mul<Output=T>>(v: &[T]) -> Vec<T> {
+    assert!(!v.is_empty());
+    let mut product = v[0];
+    let mut products = Vec::with_capacity(v.len());
+    products.push(product);
+    for val in &v[1..] {
+        product = product * (*val);
+        products.push(product);
+    }
+    products
+}
+
+#[inline]
+fn vec_sums<T: Ord + Copy + Add<Output=T>>(v: &[T]) -> Vec<T> {
+    assert!(!v.is_empty());
+    let mut sum = v[0];
+    let mut sums = Vec::with_capacity(v.len());
+    sums.push(sum);
+    for val in &v[1..] {
+        sum = sum + (*val);
+        sums.push(sum);
+    }
+    sums
+}
+
+#[inline]
+fn vec_mins<T: Ord + Copy>(v: &[T]) -> Vec<T> {
+    assert!(!v.is_empty());
+    let mut min = v[0];
+    let mut mins = Vec::with_capacity(v.len());
+    mins.push(min);
+    for val in &v[1..] {
+        min = cmp::min(min, *val);
+        mins.push(min);
+    }
+    mins
+}
+
+#[inline]
 fn vec_scalar_sub<T: Sub<Output = T> + Copy>(a: &[T], b: T) -> Vec<T> {
     a.iter().map(|x| *x - b).collect()
 }
 
+#[inline]
 fn vec_scalar_add<T: Add<Output = T> + Copy>(a: &[T], b: T) -> Vec<T> {
     a.iter().map(|x| *x + b).collect()
+}
+
+#[inline]
+fn vec_scalar_mul<T: Mul<Output = T> + Copy>(a: &[T], b: T) -> Vec<T> {
+    a.iter().map(|x| *x * b).collect()
+}
+
+#[inline]
+fn vec_scalar_div<T: Div<Output = T> + Copy>(a: &[T], b: T) -> Vec<T> {
+    a.iter().map(|x| *x / b).collect()
 }
 
 fn strs_add(a: &[String], b: &[String]) -> Vec<String> {
