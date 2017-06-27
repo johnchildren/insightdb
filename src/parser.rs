@@ -456,3 +456,19 @@ fn parse_sum_expr() {
     let expr = Expr::UnrFn(UnrOp::Sum, arg);
     assert_eq!(parser.parse_expr().unwrap(), expr);
 }
+
+#[test]
+fn parse_max_expr() {
+    let mut parser = Parser::new("max(a)");
+    let arg = Box::new(Expr::Id(String::from("a")));
+    let expr = Expr::UnrFn(UnrOp::Max, arg);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn parse_min_expr() {
+    let mut parser = Parser::new("min(a)");
+    let arg = Box::new(Expr::Id(String::from("a")));
+    let expr = Expr::UnrFn(UnrOp::Min, arg);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
+}

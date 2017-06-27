@@ -336,7 +336,7 @@ mod tests {
         let n = COL_LEN;
         let a = Column::from("a", Val::IntVec(vec![1; n]));
         let b = Column::from("b", Val::IntVec(vec![1; n]));
-        let c = Column::from("c", Val::IntVec(vec![1; n]));
+        let c = Column::from("c", Val::IntVec(vec![1,2,3,4,5,6,7,8,9,10]));
         let cols = vec![a, b, c];
         Table::from(id.into(), cols)
     }
@@ -414,6 +414,24 @@ mod tests {
         let col = Column::from("a", Val::IntVec(vec![1; COL_LEN]));
         assert_eq!(expr.eval(&tbl).unwrap(), col);
     }
+
+    #[test]
+    fn max_expr_eval() {
+        let tbl = test_table("t");
+        let arg = Box::new(Expr::Id(String::from("c")));
+        let expr = Expr::UnrFn(UnrOp::Max, arg);
+        let col = Column::from("max(c)", Val::Int(10));
+        assert_eq!(expr.eval(&tbl).unwrap(), col);
+    }    
+
+    #[test]
+    fn min_expr_eval() {
+        let tbl = test_table("t");
+        let arg = Box::new(Expr::Id(String::from("c")));
+        let expr = Expr::UnrFn(UnrOp::Min, arg);
+        let col = Column::from("min(c)", Val::Int(1));
+        assert_eq!(expr.eval(&tbl).unwrap(), col);
+    }        
 
     #[test]
     fn col_add_expr_eval() {
