@@ -339,6 +339,7 @@ impl Val {
             (&Val::IntVec(ref lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_add(lhs, rhs)),
             (&Val::IntVec(ref lhs), &Val::Int(rhs)) => Val::IntVec(vec_scalar_add(lhs, rhs)),
             (&Val::StrVec(ref lhs), &Val::StrVec(ref rhs)) => Val::StrVec(strs_add(lhs, rhs)),
+            (&Val::Str(ref lhs), &Val::Str(ref rhs)) => Val::Str(str_add(lhs, rhs)),
             _ => return Err(()),
         };
         Ok(val)
@@ -538,6 +539,12 @@ fn vec_scalar_div<T: Div<Output = T> + Copy>(a: &[T], b: T) -> Vec<T> {
     a.iter().map(|x| *x / b).collect()
 }
 
+#[inline]
+fn str_add(a: &str, b: &str) -> String {
+    a.to_string() + b
+}
+
+#[inline]
 fn strs_add(a: &[String], b: &[String]) -> Vec<String> {
     a.iter()
         .zip(b.iter())
@@ -821,4 +828,11 @@ mod tests {
         let res = val.product().unwrap();
         assert_eq!(res, Val::Int(123));
     }
+
+    #[test]
+    fn val_strs_add() {
+        let lhs = Val::Str(String::from("a1"));
+        let rhs = Val::Str(String::from("b2"));
+        assert_eq!(lhs.add(&rhs).unwrap(), Val::Str(String::from("a1b2")));
+    }    
 }

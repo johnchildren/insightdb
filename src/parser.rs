@@ -117,6 +117,7 @@ impl Scanner {
         }
     }
 
+
     fn scan_id_or_keyword(&mut self) -> Result<Token, &'static str> {
         let mut id = String::new();
         loop {
@@ -484,6 +485,15 @@ fn parse_query() {
         parser.parse().unwrap(),
         Query::from(select, by, from, filters)
     );
+}
+
+#[test]
+fn parse_add_strings_expr() {
+    let mut parser = Parser::new("\"a1\"+\"b2\"");
+    let lhs = Box::new(Expr::Str(String::from("a1")));
+    let rhs = Box::new(Expr::Str(String::from("b2")));
+    let expr = Expr::BinFn(lhs, BinOp::Add, rhs);
+    assert_eq!(parser.parse_expr().unwrap(), expr);
 }
 
 #[test]
