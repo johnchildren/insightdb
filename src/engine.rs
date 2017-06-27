@@ -1,4 +1,4 @@
-use std::ops::{Add,Sub, Mul};
+use std::ops::{Add, Sub, Mul};
 
 use parser::Parser;
 
@@ -53,14 +53,14 @@ impl Expr {
                     Some(cols) => cols,
                     None => return Err("cannot find cols"),
                 };
-                lhs.add(rhs).map_err(|_| "cannot evaluate col add")          
+                lhs.add(rhs).map_err(|_| "cannot evaluate col add")
             }
             Expr::BinFn(box Expr::Id(ref id1), BinOp::Sub, box Expr::Id(ref id2)) => {
                 let (lhs, rhs) = match tbl.get_2(id1, id2) {
                     Some(cols) => cols,
                     None => return Err("cannot find cols"),
                 };
-                lhs.sub(rhs).map_err(|_| "cannot evaluate col sub")             
+                lhs.sub(rhs).map_err(|_| "cannot evaluate col sub")
             }            
             _ => unimplemented!(),
         }
@@ -83,7 +83,7 @@ pub enum UnrOp {
     Mins,
     Avg,
     Prod,
-    Prods,    
+    Prods,
 }
 
 #[derive(Debug, PartialEq)]
@@ -95,7 +95,12 @@ pub struct Query {
 }
 
 impl Query {
-    pub fn from(select: Vec<Expr>, by: Option<Vec<Expr>>, from: Expr, filters: Option<Vec<Expr>>) -> Self {
+    pub fn from(
+        select: Vec<Expr>,
+        by: Option<Vec<Expr>>,
+        from: Expr,
+        filters: Option<Vec<Expr>>,
+    ) -> Self {
         Query {
             select: select,
             by: by,
@@ -136,9 +141,7 @@ pub struct Database {
 
 impl Database {
     pub fn from(tables: Vec<Table>) -> Self {
-        Database {
-            tables: tables,
-        }
+        Database { tables: tables }
     }
 
     pub fn get(&self, name: &str) -> Option<&Table> {
@@ -176,7 +179,7 @@ impl Table {
             None => return None,
         };
         Some((col1, col2))
-    }    
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -186,13 +189,13 @@ pub struct Column {
 }
 
 impl Column {
-    pub fn from<S:Into<String>>(name: S, val: Val) -> Self {
+    pub fn from<S: Into<String>>(name: S, val: Val) -> Self {
         Column {
             name: name.into(),
             val: val,
         }
     }
-    
+
     pub fn add(&self, rhs: &Column) -> Result<Column, ()> {
         let name = self.name.clone() + " + " + &rhs.name;
         let val = self.val.add(&rhs.val)?;
@@ -284,7 +287,7 @@ impl Val {
             _ => unimplemented!(),
         };
         Ok(val)
-    }    
+    }
 
     fn product(&self) -> Result<Val, &'static str> {
         let val = match *self {
@@ -296,191 +299,203 @@ impl Val {
     }
 }
 
-fn vec_add<T: Add<Output=T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
-    a.iter().zip(b.iter()).map(|(x,y)| *x + *y).collect()
-} 
+fn vec_add<T: Add<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
+    a.iter().zip(b.iter()).map(|(x, y)| *x + *y).collect()
+}
 
-fn vec_sub<T: Sub<Output=T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
-    a.iter().zip(b.iter()).map(|(x,y)| *x - *y).collect()
-} 
+fn vec_sub<T: Sub<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
+    a.iter().zip(b.iter()).map(|(x, y)| *x - *y).collect()
+}
 
-fn vec_scalar_sub<T: Sub<Output=T> + Copy>(a: &[T], b: T) -> Vec<T> {
+fn vec_scalar_sub<T: Sub<Output = T> + Copy>(a: &[T], b: T) -> Vec<T> {
     a.iter().map(|x| *x - b).collect()
 }
 
-fn vec_scalar_add<T: Add<Output=T> + Copy>(a: &[T], b: T) -> Vec<T> {
+fn vec_scalar_add<T: Add<Output = T> + Copy>(a: &[T], b: T) -> Vec<T> {
     a.iter().map(|x| *x + b).collect()
 }
 
 fn strs_add(a: &[String], b: &[String]) -> Vec<String> {
-    a.iter().zip(b.iter()).map(|(x,y)| x.to_string()+y).collect()
+    a.iter()
+        .zip(b.iter())
+        .map(|(x, y)| x.to_string() + y)
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-const COL_LEN: usize = 10; 
+    const COL_LEN: usize = 10;
 
-fn id_expr<S:Into<String>>(id: S) -> Expr {
-    Expr::Id(id.into())
-}
+    fn id_expr<S: Into<String>>(id: S) -> Expr {
+        Expr::Id(id.into())
+    }
 
-fn test_table<S:Into<String>>(id: S) -> Table {
-    let n = COL_LEN;
-    let a = Column::from("a", Val::IntVec(vec![1; n]));
-    let b = Column::from("b", Val::IntVec(vec![1; n]));
-    let c = Column::from("c", Val::IntVec(vec![1; n]));
-    let cols = vec![a, b, c];
-    Table::from(id.into(), cols)
-}
+    fn test_table<S: Into<String>>(id: S) -> Table {
+        let n = COL_LEN;
+        let a = Column::from("a", Val::IntVec(vec![1; n]));
+        let b = Column::from("b", Val::IntVec(vec![1; n]));
+        let c = Column::from("c", Val::IntVec(vec![1; n]));
+        let cols = vec![a, b, c];
+        Table::from(id.into(), cols)
+    }
 
-fn test_db() -> Database {
-    let t1 = test_table("t1");
-    let t2 = test_table("t2");
-    let tables = vec![t1, t2];
-    Database::from(tables)
-}
+    fn test_db() -> Database {
+        let t1 = test_table("t1");
+        let t2 = test_table("t2");
+        let tables = vec![t1, t2];
+        Database::from(tables)
+    }
 
-#[test]
-fn val_add_intvecs() {
-    let n = COL_LEN;
-    let x = Val::IntVec(vec![1; n]);
-    let y = Val::IntVec(vec![1; n]);
-    assert_eq!(x.add(&y).unwrap(), Val::IntVec(vec![2; n]));
-}
+    #[test]
+    fn val_add_intvecs() {
+        let n = COL_LEN;
+        let x = Val::IntVec(vec![1; n]);
+        let y = Val::IntVec(vec![1; n]);
+        assert_eq!(x.add(&y).unwrap(), Val::IntVec(vec![2; n]));
+    }
 
-#[test]
-fn val_add_strvecs() {
-    let n = COL_LEN;
-    let x = Val::StrVec((0..n).map(|x| x.to_string()).collect());
-    let y = Val::StrVec((0..n).map(|x| x.to_string()).collect());
-    assert_eq!(x.add(&y).unwrap(), Val::StrVec((0..n).map(|x| x.to_string()+ &x.to_string()).collect()));
-}
+    #[test]
+    fn val_add_strvecs() {
+        let n = COL_LEN;
+        let x = Val::StrVec((0..n).map(|x| x.to_string()).collect());
+        let y = Val::StrVec((0..n).map(|x| x.to_string()).collect());
+        assert_eq!(
+            x.add(&y).unwrap(),
+            Val::StrVec((0..n).map(|x| x.to_string() + &x.to_string()).collect())
+        );
+    }
 
-#[test]
-fn val_add_intvec_scalar() {
-    let n = COL_LEN;
-    let x = Val::IntVec(vec![1; n]);
-    let y = Val::Int(1);
-    assert_eq!(x.add(&y).unwrap(), Val::IntVec(vec![2; n]));
-}
+    #[test]
+    fn val_add_intvec_scalar() {
+        let n = COL_LEN;
+        let x = Val::IntVec(vec![1; n]);
+        let y = Val::Int(1);
+        assert_eq!(x.add(&y).unwrap(), Val::IntVec(vec![2; n]));
+    }
 
-#[test]
-fn col_add_intvec_intvec() {
-    let n = COL_LEN;
-    let a = Column::from("a", Val::IntVec(vec![1; n]));
-    let b = Column::from("b", Val::IntVec(vec![1; n]));
-    assert_eq!(a.add(&b).unwrap(), Column::from("a + b", Val::IntVec(vec![2; n])));
-}
+    #[test]
+    fn col_add_intvec_intvec() {
+        let n = COL_LEN;
+        let a = Column::from("a", Val::IntVec(vec![1; n]));
+        let b = Column::from("b", Val::IntVec(vec![1; n]));
+        assert_eq!(
+            a.add(&b).unwrap(),
+            Column::from("a + b", Val::IntVec(vec![2; n]))
+        );
+    }
 
-#[test]
-fn table_get() {
-    let n = COL_LEN;
-    let a = Column::from("a", Val::IntVec(vec![1; n]));
-    let b = Column::from("b", Val::IntVec(vec![1; n]));
-    let c = Column::from("c", Val::IntVec(vec![1; n]));
-    let cols = vec![a, b, c];
-    let tbl = Table::from("t", cols);
-    assert_eq!(tbl.get("b").unwrap(), &Column::from("b", Val::IntVec(vec![1; n])));
-}
+    #[test]
+    fn table_get() {
+        let n = COL_LEN;
+        let a = Column::from("a", Val::IntVec(vec![1; n]));
+        let b = Column::from("b", Val::IntVec(vec![1; n]));
+        let c = Column::from("c", Val::IntVec(vec![1; n]));
+        let cols = vec![a, b, c];
+        let tbl = Table::from("t", cols);
+        assert_eq!(
+            tbl.get("b").unwrap(),
+            &Column::from("b", Val::IntVec(vec![1; n]))
+        );
+    }
 
-#[test]
-fn db_get() {
-    let db = test_db();
-    let tbl = test_table("t2");
-    assert_eq!(db.get("t2").unwrap(), &tbl);
-}
+    #[test]
+    fn db_get() {
+        let db = test_db();
+        let tbl = test_table("t2");
+        assert_eq!(db.get("t2").unwrap(), &tbl);
+    }
 
-#[test]
-fn id_expr_eval() {
-    let tbl = test_table("t");
-    let expr = Expr::Id(String::from("a"));
-    let col = Column::from("a", Val::IntVec(vec![1; COL_LEN]));
-    assert_eq!(expr.eval(&tbl).unwrap(), col);
-}
+    #[test]
+    fn id_expr_eval() {
+        let tbl = test_table("t");
+        let expr = Expr::Id(String::from("a"));
+        let col = Column::from("a", Val::IntVec(vec![1; COL_LEN]));
+        assert_eq!(expr.eval(&tbl).unwrap(), col);
+    }
 
-#[test]
-fn col_add_expr_eval() {
-    let tbl = test_table("t");
-    let lhs = Box::new(id_expr("a"));
-    let rhs = Box::new(id_expr("b"));
-    let op = Expr::BinFn(lhs, BinOp::Add, rhs);
-    let res = op.eval(&tbl).unwrap();   
-    let col = Column::from("a + b", Val::IntVec(vec![2; COL_LEN]));
-    assert_eq!(res, col);
-}
+    #[test]
+    fn col_add_expr_eval() {
+        let tbl = test_table("t");
+        let lhs = Box::new(id_expr("a"));
+        let rhs = Box::new(id_expr("b"));
+        let op = Expr::BinFn(lhs, BinOp::Add, rhs);
+        let res = op.eval(&tbl).unwrap();
+        let col = Column::from("a + b", Val::IntVec(vec![2; COL_LEN]));
+        assert_eq!(res, col);
+    }
 
-#[test]
-fn col_sub_expr_eval() {
-    let tbl = test_table("t");
-    let lhs = Box::new(id_expr("a"));
-    let rhs = Box::new(id_expr("b"));
-    let op = Expr::BinFn(lhs, BinOp::Sub, rhs);
-    let res = op.eval(&tbl).unwrap();   
-    let col = Column::from("a - b", Val::IntVec(vec![0; COL_LEN]));
-    assert_eq!(res, col);
-}
+    #[test]
+    fn col_sub_expr_eval() {
+        let tbl = test_table("t");
+        let lhs = Box::new(id_expr("a"));
+        let rhs = Box::new(id_expr("b"));
+        let op = Expr::BinFn(lhs, BinOp::Sub, rhs);
+        let res = op.eval(&tbl).unwrap();
+        let col = Column::from("a - b", Val::IntVec(vec![0; COL_LEN]));
+        assert_eq!(res, col);
+    }
 
-#[test]
-fn query_select_from_exec() {
-    let db = test_db();
-    let qry = Query::from_str("select a+a, b-b from t1").unwrap();
-    let col1 = Column::from("a + a", Val::IntVec(vec![2; COL_LEN]));
-    let col2 = Column::from("b - b", Val::IntVec(vec![0; COL_LEN]));
-    let exp = Table::from("t1", vec![col1, col2]);
-    let tbl = qry.exec(&db).unwrap();
-    assert_eq!(tbl, exp);
-}
+    #[test]
+    fn query_select_from_exec() {
+        let db = test_db();
+        let qry = Query::from_str("select a+a, b-b from t1").unwrap();
+        let col1 = Column::from("a + a", Val::IntVec(vec![2; COL_LEN]));
+        let col2 = Column::from("b - b", Val::IntVec(vec![0; COL_LEN]));
+        let exp = Table::from("t1", vec![col1, col2]);
+        let tbl = qry.exec(&db).unwrap();
+        assert_eq!(tbl, exp);
+    }
 
-#[test]
-fn query_select_sum_exec() {
-    let db = test_db();
-    let qry = Query::from_str("select sum(a) from t1").unwrap();
-    let col1 = Column::from("sum(a)", Val::Int(10));
-    let exp = Table::from("t1", vec![col1]);
-    let tbl = qry.exec(&db).unwrap();
-    assert_eq!(tbl, exp);
-}
+    #[test]
+    fn query_select_sum_exec() {
+        let db = test_db();
+        let qry = Query::from_str("select sum(a) from t1").unwrap();
+        let col1 = Column::from("sum(a)", Val::Int(10));
+        let exp = Table::from("t1", vec![col1]);
+        let tbl = qry.exec(&db).unwrap();
+        assert_eq!(tbl, exp);
+    }
 
-#[test]
-fn query_select_by_from_exec() {
-    let db = test_db();
-    let qry = Query::from_str("select a+a, b-b by c from t1").unwrap();
-    let col1 = Column::from("a + a", Val::IntVec(vec![2; COL_LEN]));
-    let col2 = Column::from("b - b", Val::IntVec(vec![0; COL_LEN]));
-    let exp = Table::from("t1", vec![col1, col2]);
-    let tbl = qry.exec(&db).unwrap();
-    assert_eq!(tbl, exp);
-}
-#[test]
-fn val_intvec_sum() {
-    let n = 10;
-    let val = Val::IntVec(vec![1; n]);
-    let sum = val.sum().unwrap();
-    assert_eq!(sum, Val::Int(10));
-}
+    #[test]
+    fn query_select_by_from_exec() {
+        let db = test_db();
+        let qry = Query::from_str("select a+a, b-b by c from t1").unwrap();
+        let col1 = Column::from("a + a", Val::IntVec(vec![2; COL_LEN]));
+        let col2 = Column::from("b - b", Val::IntVec(vec![0; COL_LEN]));
+        let exp = Table::from("t1", vec![col1, col2]);
+        let tbl = qry.exec(&db).unwrap();
+        assert_eq!(tbl, exp);
+    }
+    #[test]
+    fn val_intvec_sum() {
+        let n = 10;
+        let val = Val::IntVec(vec![1; n]);
+        let sum = val.sum().unwrap();
+        assert_eq!(sum, Val::Int(10));
+    }
 
-#[test]
-fn val_intvec_max() {
-    let vec = vec![1,2,3,4,5];
-    let val = Val::IntVec(vec);
-    let max = val.max().unwrap();
-    assert_eq!(max, Val::Int(5));
-}
+    #[test]
+    fn val_intvec_max() {
+        let vec = vec![1, 2, 3, 4, 5];
+        let val = Val::IntVec(vec);
+        let max = val.max().unwrap();
+        assert_eq!(max, Val::Int(5));
+    }
 
-#[test]
-fn val_intvec_min() {
-    let vec = vec![1,2,3,4,5];
-    let val = Val::IntVec(vec);
-    let min = val.min().unwrap();
-    assert_eq!(min, Val::Int(1));
-}
+    #[test]
+    fn val_intvec_min() {
+        let vec = vec![1, 2, 3, 4, 5];
+        let val = Val::IntVec(vec);
+        let min = val.min().unwrap();
+        assert_eq!(min, Val::Int(1));
+    }
 
-#[test]
-fn val_int_sum() {
-    let val = Val::Int(1);
-    let sum = val.sum().unwrap();
-    assert_eq!(sum, Val::Int(1));
-}
+    #[test]
+    fn val_int_sum() {
+        let val = Val::Int(1);
+        let sum = val.sum().unwrap();
+        assert_eq!(sum, Val::Int(1));
+    }
 }
