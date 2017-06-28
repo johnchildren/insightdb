@@ -5,6 +5,7 @@ mod engine;
 mod parser;
 
 use std::io::{self, Write};
+use std::time::Instant;
 
 use engine::{Column, Database, Table, Val};
 
@@ -24,14 +25,19 @@ fn start_repl() {
         io::stdout().flush().unwrap();
         let mut cmd = String::new();
         match io::stdin().read_line(&mut cmd) {
-            Ok(n) => (),
+            Ok(_) => (),
             Err(err) => println!("error: {}", err),
         }
         //println!("{}", cmd);
         cmd.trim_right_matches("\r\n");
         cmd.trim_right_matches("\n");
+        let now = Instant::now();
         match db.exec(&cmd) {
-            Ok(table) => println!("{}", table),
+            Ok(table) => {
+                let dt = now.elapsed();
+                println!("query executed in {} nanoseconds", dt.as_secs() * 1_000_000_000 + dt.subsec_nanos() as u64);
+                println!("{}", table);
+            }
             Err(err) => println!("error: {}", err),
         }
     }
