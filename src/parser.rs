@@ -26,6 +26,7 @@ enum Token {
     Mul,
     Div,
     StrLit(String),
+    Range,
 }
 
 #[derive(Debug)]
@@ -90,7 +91,7 @@ impl Scanner {
         loop {
             match self.cur_char() {
                 Some(c @ '0'..'9') => s.push(c),
-                Some('+') | Some('-') | Some('*') | Some('/') | Some(' ') | None => break,
+                Some('+') | Some('-') | Some('*') | Some('/') | Some(' ') | Some(',') | Some('(') | Some(')') | None => break,
                 Some(_) => return Err("unexpected digit"),                
             }
             self.pos += 1;
@@ -142,6 +143,7 @@ impl Scanner {
             "min" => Token::Min,
             "maxs" => Token::Maxs,
             "mins" => Token::Mins,
+            "range" => Token::Range,
             _ => Token::Id(id),
         };
         Ok(tok)
@@ -262,6 +264,12 @@ impl Parser {
                     Err(err) => return Err(err),
                 }
             }     
+            Ok(Token::Range) => {
+                match self.parse_range_fn() {
+                    Ok(expr) => expr,
+                    Err(err) => return Err(err),
+                }
+            }
             Ok(Token::StrLit(lit)) => Expr::Str(lit),                              
             Ok(_) => unimplemented!(),
             Err(err) => return Err(err),
@@ -283,6 +291,29 @@ impl Parser {
         };
         println!("rhs={:?}", rhs);
         Ok(Expr::BinFn(Box::new(lhs), op, Box::new(rhs)))
+    }
+
+    fn expect(&mut self, exp: Token) -> Option<&'static str> {
+        match self.next_token() {
+            Ok(ref tok) if &exp == tok => None,
+            Ok(_) => Some("unexpected token"),
+            Err(err) => Some(err),
+        }
+    } 
+
+    fn parse_range_fn(&mut self) -> Result<Expr, &'static str> {
+        if let Some(err) = self.expect(Token::LParen) {
+            return Err(err);
+        }
+        let lhs = Box::new(self.parse_expr()?);
+        match self.peek_next_token() {
+            Ok(Token::Comma) => (),
+            Ok(_) => return Ok(Expr::UnrFn(UnrOp::Range, lhs)),
+            Err(err) => return Err(err),
+        }
+        let _ = self.next_token().unwrap();
+        let rhs = Box::new(self.parse_expr()?);
+        Ok(Expr::BinFn(lhs, BinOp::Range, rhs))
     }
 
     fn parse_from(&mut self) -> Result<Expr, &'static str> {
@@ -431,6 +462,28 @@ fn scan_query() {
     assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("b"))));
     assert_eq!(scanner.next_token(), Ok(Token::From));
     assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("t"))));
+    assert_eq!(scanner.next_token(), Ok(Token::EOF));
+}
+
+#[test]
+fn scan_range_unr_fn() {
+    let mut scanner = Scanner::new("range(a)");
+    assert_eq!(scanner.next_token(), Ok(Token::Range));
+    assert_eq!(scanner.next_token(), Ok(Token::LParen));
+    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("a"))));
+    assert_eq!(scanner.next_token(), Ok(Token::RParen));
+    assert_eq!(scanner.next_token(), Ok(Token::EOF));
+}
+
+#[test]
+fn scan_range_bin_fn() {
+    let mut scanner = Scanner::new("range(1, 10)");
+    assert_eq!(scanner.next_token(), Ok(Token::Range));
+    assert_eq!(scanner.next_token(), Ok(Token::LParen));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));
+    assert_eq!(scanner.next_token(), Ok(Token::Comma));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(10)));
+    assert_eq!(scanner.next_token(), Ok(Token::RParen));
     assert_eq!(scanner.next_token(), Ok(Token::EOF));
 }
 

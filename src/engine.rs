@@ -27,7 +27,12 @@ impl Expr {
                 let val = Val::Str(s.clone());
                 Ok(Column::from(name, val))
             }
-            Expr::Int(val) => Ok(Column::from("c", Val::Int(val))),
+            Expr::Int(val) => Ok(Column::from(val.to_string(), Val::Int(val))),
+            Expr::UnrFn(UnrOp::Sum, box Expr::UnrFn(UnrOp::Range, box Expr::Int(n))) => {
+                let name = "sum(range(".to_string() + &n.to_string() + "))";
+                let val = Val::Int(n*(n+1)/2);
+                Ok(Column::from(name, val))
+            }
             Expr::UnrFn(UnrOp::Sum, box Expr::Id(ref id)) => {
                 let col = match tbl.get(id) {
                     Some(col) => col,
@@ -83,7 +88,21 @@ impl Expr {
                     None => return Err("cannot find col"),
                 };
                 return col.products();
-            }                                                
+            }    
+            Expr::UnrFn(UnrOp::Range, box Expr::Int(n)) => {
+                let val = Val::IntVec(ranged_vec(0, n as usize));
+                let name = "range(".to_string() + &n.to_string() + ")";
+                Ok(Column::from(name, val))
+            } 
+            Expr::UnrFn(UnrOp::Range, box Expr::Id(ref id)) => {
+                let col = tbl.get(id).unwrap();
+                col.range()
+            }                                                                        
+            Expr::BinFn(box Expr::Int(lhs), BinOp::Range, box Expr::Int(rhs)) => {
+                let name = "range(".to_string() + &lhs.to_string() + ", " + &rhs.to_string() + ")";
+                let val = Val::IntVec(ranged_vec(lhs as usize, rhs as usize));
+                return Ok(Column::from(name, val));
+            }
             Expr::BinFn(box Expr::Str(ref lhs), BinOp::Add, box Expr::Str(ref rhs)) => {
                 let val = lhs.to_string() + &rhs;
                 let name = val.clone();
@@ -96,12 +115,22 @@ impl Expr {
                 };
                 lhs.add(rhs).map_err(|_| "cannot evaluate col add")
             }
+            Expr::BinFn(ref lhs, BinOp::Add, ref rhs) => {
+                let lcol = lhs.eval(tbl)?;
+                let rcol = rhs.eval(tbl)?;
+                return lcol.add(&rcol).map_err(|_| "cannot add exprs");
+            }   
             Expr::BinFn(box Expr::Id(ref id1), BinOp::Sub, box Expr::Id(ref id2)) => {
                 let (lhs, rhs) = match tbl.get_2(id1, id2) {
                     Some(cols) => cols,
                     None => return Err("cannot find cols"),
                 };
                 lhs.sub(rhs).map_err(|_| "cannot evaluate col sub")
+            }              
+            Expr::BinFn(ref lhs, BinOp::Sub, ref rhs) => {
+                let lcol = lhs.eval(tbl)?;
+                let rcol = rhs.eval(tbl)?;
+                return lcol.sub(&rcol).map_err(|_| "cannot sub exprs");
             }    
             Expr::BinFn(box Expr::Id(ref id1), BinOp::Mul, box Expr::Id(ref id2)) => {
                 let (lhs, rhs) = match tbl.get_2(id1, id2) {
@@ -109,7 +138,12 @@ impl Expr {
                     None => return Err("cannot find cols"),
                 };
                 lhs.mul(rhs).map_err(|_| "cannot evaluate col sub")
-            }    
+            }                 
+            Expr::BinFn(ref lhs, BinOp::Mul, ref rhs) => {
+                let lcol = lhs.eval(tbl)?;
+                let rcol = rhs.eval(tbl)?;
+                return lcol.mul(&rcol).map_err(|_| "cannot mul exprs");
+            }                                    
             Expr::BinFn(box Expr::Id(ref id1), BinOp::Div, box Expr::Id(ref id2)) => {
                 let (lhs, rhs) = match tbl.get_2(id1, id2) {
                     Some(cols) => cols,
@@ -117,7 +151,7 @@ impl Expr {
                 };
                 lhs.div(rhs).map_err(|_| "cannot evaluate col sub")
             }                                    
-            _ => unimplemented!(),
+            ref expr => unimplemented!("expr={:?}", expr),
         }
     }
 }
@@ -128,6 +162,7 @@ pub enum BinOp {
     Sub,
     Mul,
     Div,
+    Range,
 }
 
 #[derive(Debug, PartialEq)]
@@ -141,6 +176,7 @@ pub enum UnrOp {
     Avg,
     Product,
     Products,
+    Range,
 }
 
 #[derive(Debug, PartialEq)]
@@ -206,8 +242,7 @@ impl Database {
     }
 
     pub fn exec(&self, cmd: &str) -> Result<Table, &'static str> {
-        let mut parser = Parser::new(cmd);
-        let query = parser.parse()?;
+        let query = Query::from_str(cmd)?;
         query.exec(self)
     }
 }
@@ -247,43 +282,31 @@ impl Table {
 
 impl fmt::Display for Table {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
+        try!(write!(
+            f,
             "\n{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
             "maxs(c)",
             "mins(c)",
             "sums(c)",
             "c"
-        );
-        write!(f, "-----------|------------|------------|-----------\n");        
-        write!(f,
-            "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
-            1,
-            1,
-            1,
-            1
-        );
-        write!(f,
-            "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
-            2,
-            1,
-            3,
-            2
-        );
-        write!(f,
-            "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
-            3,
-            1,
-            6,
-            3
-        );
-        write!(f,
+        ));
+        try!(write!(
+            f,
+            "-----------|------------|------------|-----------\n"
+        ));
+        try!(write!(f, "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n", 1, 1, 1, 1));
+        try!(write!(f, "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n", 2, 1, 3, 2));
+        try!(write!(f, "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n", 3, 1, 6, 3));
+        try!(write!(
+            f,
             "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
             4,
             1,
             10,
             4
-        );
-        write!(f,
+        ));
+        write!(
+            f,
             "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
             5,
             1,
@@ -378,6 +401,12 @@ impl Column {
         let val = self.val.products()?;
         Ok(Column::from(name, val))
     }
+
+    fn range(&self) -> Result<Column, &'static str> {
+        let name = "range(".to_string() + &self.name + ")";
+        let val = self.val.range()?;
+        Ok(Column::from(name, val))
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -393,9 +422,10 @@ impl Val {
         let val = match (self, rhs) {
             (&Val::IntVec(ref lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_add(lhs, rhs)),
             (&Val::IntVec(ref lhs), &Val::Int(rhs)) => Val::IntVec(vec_scalar_add(lhs, rhs)),
+            (&Val::Int(x), &Val::Int(y)) => Val::Int(x + y),
             (&Val::StrVec(ref lhs), &Val::StrVec(ref rhs)) => Val::StrVec(strs_add(lhs, rhs)),
             (&Val::Str(ref lhs), &Val::Str(ref rhs)) => Val::Str(str_add(lhs, rhs)),
-            _ => return Err(()),
+            _ => unimplemented!(),
         };
         Ok(val)
     }
@@ -404,7 +434,8 @@ impl Val {
         let val = match (self, rhs) {
             (&Val::IntVec(ref lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_sub(lhs, rhs)),
             (&Val::IntVec(ref lhs), &Val::Int(rhs)) => Val::IntVec(vec_scalar_sub(lhs, rhs)),
-            _ => return Err(()),
+            (&Val::Int(x), &Val::Int(y)) => Val::Int(x - y),
+            _ => unimplemented!(),
         };
         Ok(val)
     }
@@ -413,7 +444,9 @@ impl Val {
         let val = match (self, rhs) {
             (&Val::IntVec(ref lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_mul(lhs, rhs)),
             (&Val::IntVec(ref lhs), &Val::Int(rhs)) => Val::IntVec(vec_scalar_mul(lhs, rhs)),
-            _ => return Err(()),
+            (&Val::Int(lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_scalar_mul(rhs, lhs)),
+            (&Val::Int(ref x), &Val::Int(y)) => Val::Int(x * y),
+            _ => unimplemented!(),
         };
         Ok(val)
     }
@@ -422,7 +455,7 @@ impl Val {
         let val = match (self, rhs) {
             (&Val::IntVec(ref lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_div(lhs, rhs)),
             (&Val::IntVec(ref lhs), &Val::Int(rhs)) => Val::IntVec(vec_scalar_div(lhs, rhs)),
-            _ => return Err(()),
+            _ => unimplemented!(),
         };
         Ok(val)
     }
@@ -500,6 +533,14 @@ impl Val {
         };
         Ok(val)
     }
+
+    fn range(&self) -> Result<Val, &'static str> {
+        match *self {
+            Val::Int(val) => Ok(Val::Int(val)),
+            Val::IntVec(ref vec) => Ok(Val::IntVec(vec_int_range(vec))),
+            _ => unimplemented!(),
+        }
+    }
 }
 
 impl fmt::Display for Val {
@@ -560,6 +601,23 @@ fn vec_products<T: Ord + Copy + Mul<Output = T>>(v: &[T]) -> Vec<T> {
 }
 
 #[inline]
+fn vec_int_range(v: &[i64]) -> Vec<i64> {
+    assert!(!v.is_empty());
+    let mut min = v[0];
+    let mut max = min;
+    for val in &v[1..] {
+        max = cmp::max(*val, max);
+        min = cmp::min(*val, min);
+    }
+    let n = (max - min) as usize + 1;
+    let mut range = Vec::with_capacity(n);
+    for i in (0..n).map(|i| i as i64){
+        range.push(min + i)
+    }
+    range
+}
+
+#[inline]
 fn vec_sums<T: Ord + Copy + Add<Output = T>>(v: &[T]) -> Vec<T> {
     assert!(!v.is_empty());
     let mut sum = v[0];
@@ -583,6 +641,11 @@ fn vec_mins<T: Ord + Copy>(v: &[T]) -> Vec<T> {
         mins.push(min);
     }
     mins
+}
+
+#[inline]
+fn ranged_vec(start: usize, end: usize) -> Vec<i64> {
+    (start..end).map(|x| x as i64).collect()
 }
 
 #[inline]
@@ -901,4 +964,47 @@ mod tests {
         let rhs = Val::Str(String::from("b2"));
         assert_eq!(lhs.add(&rhs).unwrap(), Val::Str(String::from("a1b2")));
     }
+
+    #[test]
+    fn range_unr_expr_int_eval() {
+        let arg = Box::new(Expr::Int(5));
+        let expr = Expr::UnrFn(UnrOp::Range, arg);
+        let tbl = test_table("t");
+        let col = Column::from("range(5)", Val::IntVec(vec![0, 1, 2, 3, 4]));
+        assert_eq!(expr.eval(&tbl).unwrap(), col);
+    }
+
+    #[test]
+    fn range_bin_expr_int_int_eval() {
+        let lhs = Box::new(Expr::Int(1));
+        let rhs = Box::new(Expr::Int(5));
+        let expr = Expr::BinFn(lhs, BinOp::Range, rhs);
+        let tbl = test_table("t");
+        let col = Column::from("range(1, 5)", Val::IntVec(vec![1, 2, 3, 4]));
+        assert_eq!(expr.eval(&tbl).unwrap(), col);
+    }
+
+    #[test]
+    fn operator_precedence() {
+        let query = Query::from_str("select 1+2*3,1*2+3 from t1").unwrap();
+        let db = test_db();
+        let col1 = Column::from("1 + 2 * 3", Val::Int(7));
+        let col2 = Column::from("1 * 2 + 3", Val::Int(5));
+        let tbl = Table::from("t1", vec![col1, col2]);
+        assert_eq!(query.exec(&db).unwrap(), tbl);
+    }
+
+    #[test]
+    fn range_val_intvec() {
+        let val = Val::IntVec(vec![5i64, 4, 1, 8, 10]);
+        let actual = val.range().unwrap();
+        assert_eq!(actual, Val::IntVec(vec![1,2,3,4,5,6,7,8,9,10]));
+    }
+
+    #[test]
+    fn column_range() {
+        let col = Column::from("a", Val::IntVec(vec![5i64, 4, 1, 8, 10]));
+        let exp = Column::from("range(a)", Val::IntVec(vec![1,2,3,4,5,6,7,8,9,10]));
+        assert_eq!(col.range().unwrap(), exp);
+    }    
 }

@@ -1,8 +1,13 @@
 #![feature(exclusive_range_pattern)]
 #![feature(box_patterns)]
 
+extern crate chrono;
+extern crate tabwriter;
+
 mod engine;
 mod parser;
+
+use chrono::prelude::*;
 
 use std::io::{self, Write};
 use std::time::Instant;
@@ -20,10 +25,10 @@ fn test_db() -> Database {
 
 fn start_repl() {
     let db = test_db();
+    let mut cmd = String::new();
     loop {
         print!("insightdb> ");
-        io::stdout().flush().unwrap();
-        let mut cmd = String::new();
+        io::stdout().flush().unwrap();       
         match io::stdin().read_line(&mut cmd) {
             Ok(_) => (),
             Err(err) => println!("error: {}", err),
@@ -40,6 +45,7 @@ fn start_repl() {
             }
             Err(err) => println!("error: {}", err),
         }
+        cmd.clear();
     }
 }
 
