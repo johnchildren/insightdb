@@ -56,7 +56,8 @@ impl Scanner {
             Some('-') => Token::Sub,
             Some('*') => Token::Mul,
             Some('/') => Token::Div,   
-            Some('"') => return self.scan_str_literal(),         
+            Some('"') => return self.scan_str_literal(),  
+            Some('\n') => Token::EOF,       
             Some(c) => {
                 println!("unexpected char={:?}", c);
                 return Err("unexpected token");
@@ -123,7 +124,7 @@ impl Scanner {
         loop {
             match self.cur_char() {
                 Some('(') | Some(')') | Some(' ') | Some(',') | Some('+') | Some('-') |
-                Some('*') | Some('/') | None => break,
+                Some('*') | Some('/') | Some('\n') | None => break,
                 Some(c) => id.push(c), 
             }
             self.pos += 1;
@@ -265,7 +266,7 @@ impl Parser {
             Ok(_) => unimplemented!(),
             Err(err) => return Err(err),
         };
-        println!("lhs={:?}", lhs);
+        //println!("lhs={:?}", lhs);
         let op = match self.peek_next_token() {
             Ok(Token::Add) => BinOp::Add,
             Ok(Token::Sub) => BinOp::Sub,
@@ -326,7 +327,7 @@ impl Parser {
     fn peek_next_token(&mut self) -> Result<Token, &'static str> {
         match self.scanner.peek_next_token() {
             Ok(tok) => Ok(tok),
-            Err(_) => Err("cannot peek next token"),
+            Err(err) => Err(err),
         }
     }
 

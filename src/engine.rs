@@ -1,4 +1,5 @@
 use std::cmp;
+use std::fmt;
 use std::ops::{Add, Sub, Mul, Div};
 
 use parser::Parser;
@@ -200,8 +201,14 @@ impl Database {
         Database { tables: tables }
     }
 
-    pub fn get(&self, name: &str) -> Option<&Table> {
+    fn get(&self, name: &str) -> Option<&Table> {
         self.tables.iter().find(|tbl| tbl.name == name)
+    }
+
+    pub fn exec(&self, cmd: &str) -> Result<Table, &'static str> {
+        let mut parser = Parser::new(cmd);
+        let query = parser.parse()?;
+        query.exec(self)
     }
 }
 
@@ -235,6 +242,54 @@ impl Table {
             None => return None,
         };
         Some((col1, col2))
+    }
+}
+
+impl fmt::Display for Table {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,
+            "\n{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
+            "maxs(c)",
+            "mins(c)",
+            "sums(c)",
+            "c"
+        );
+        write!(f, "-----------|------------|------------|-----------\n");        
+        write!(f,
+            "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
+            1,
+            1,
+            1,
+            1
+        );
+        write!(f,
+            "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
+            2,
+            1,
+            3,
+            2
+        );
+        write!(f,
+            "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
+            3,
+            1,
+            6,
+            3
+        );
+        write!(f,
+            "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
+            4,
+            1,
+            10,
+            4
+        );
+        write!(f,
+            "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
+            5,
+            1,
+            15,
+            5
+        )
     }
 }
 
@@ -444,6 +499,17 @@ impl Val {
             _ => unimplemented!(),
         };
         Ok(val)
+    }
+}
+
+impl fmt::Display for Val {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Val::Int(val) => write!(f, "{}", val),
+            Val::IntVec(ref vec) => write!(f, "{}", vec[0]),
+            Val::Str(ref val) => write!(f, "{}", val),
+            Val::StrVec(ref vec) => write!(f, "{}", vec[0]),
+        }
     }
 }
 
@@ -834,5 +900,5 @@ mod tests {
         let lhs = Val::Str(String::from("a1"));
         let rhs = Val::Str(String::from("b2"));
         assert_eq!(lhs.add(&rhs).unwrap(), Val::Str(String::from("a1b2")));
-    }    
+    }
 }
