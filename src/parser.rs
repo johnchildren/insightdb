@@ -3,6 +3,7 @@ use engine::{Expr, Query, BinOp, UnrOp};
 #[derive(Debug, PartialEq)]
 enum Token {
     Comma,
+    Colon,
     Select,
     Id(String),
     LParen,
@@ -27,6 +28,9 @@ enum Token {
     Div,
     StrLit(String),
     Range,
+    Hyphen,
+    Dot,
+    TimeSep,
 }
 
 #[derive(Debug)]
@@ -49,6 +53,7 @@ impl Scanner {
         let token = match self.cur_char() {
             Some(' ') => return self.scan_whitespace(),
             Some('a'..'z') => return self.scan_id_or_keyword(),
+            Some('T') => Token::TimeSep,
             Some('(') => Token::LParen,
             Some(')') => Token::RParen,
             Some(',') => Token::Comma,
@@ -58,7 +63,9 @@ impl Scanner {
             Some('*') => Token::Mul,
             Some('/') => Token::Div,   
             Some('"') => return self.scan_str_literal(),  
-            Some('\n') => Token::EOF,       
+            Some('\n') => Token::EOF,  
+            Some('.') => Token::Dot,    
+            Some(':') => Token::Colon, 
             Some(c) => {
                 println!("unexpected char={:?}", c);
                 return Err("unexpected token");
@@ -91,8 +98,12 @@ impl Scanner {
         loop {
             match self.cur_char() {
                 Some(c @ '0'..'9') => s.push(c),
-                Some('+') | Some('-') | Some('*') | Some('/') | Some(' ') | Some(',') | Some('(') | Some(')') | None => break,
-                Some(_) => return Err("unexpected digit"),                
+                Some('+') | Some('-') | Some('*') | Some('/') | Some(' ') | Some(',') |
+                Some('(') | Some(')') | Some(':') | Some('.') | Some('T') | None => break,
+                Some(c) => {
+                    println!("c = {}", c);
+                    return Err("unexpected digit");
+                }
             }
             self.pos += 1;
         }
@@ -118,7 +129,6 @@ impl Scanner {
             }
         }
     }
-
 
     fn scan_id_or_keyword(&mut self) -> Result<Token, &'static str> {
         let mut id = String::new();
@@ -284,12 +294,12 @@ impl Parser {
             Err(err) => return Err(err),
         };
         let _ = self.scanner.next_token().unwrap();
-        println!("op={:?}", op);
+        //println!("op={:?}", op);
         let rhs = match self.parse_expr() {
             Ok(expr) => expr,
             Err(err) => return Err(err),
         };
-        println!("rhs={:?}", rhs);
+        //println!("rhs={:?}", rhs);
         Ok(Expr::BinFn(Box::new(lhs), op, Box::new(rhs)))
     }
 
@@ -299,7 +309,7 @@ impl Parser {
             Ok(_) => Some("unexpected token"),
             Err(err) => Some(err),
         }
-    } 
+    }
 
     fn parse_range_fn(&mut self) -> Result<Expr, &'static str> {
         if let Some(err) = self.expect(Token::LParen) {
@@ -394,6 +404,11 @@ impl Parser {
         self.scanner.next_token()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::prelude::*;
+    use super::*;
 
 #[test]
 fn scan_select_token() {
@@ -720,4 +735,29 @@ fn parse_products_expr() {
     let arg = Box::new(Expr::Id(String::from("a")));
     let expr = Expr::UnrFn(UnrOp::Products, arg);
     assert_eq!(parser.parse_expr().unwrap(), expr);
+}
+
+#[test]
+fn scan_datetime() {
+    let mut scanner = Scanner::new("2014.03.01T00:23:02");
+    assert_eq!(scanner.next_token(), Ok(Token::Int(2014)));
+    assert_eq!(scanner.next_token(), Ok(Token::Dot));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(3)));
+    assert_eq!(scanner.next_token(), Ok(Token::Dot));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));    
+    assert_eq!(scanner.next_token(), Ok(Token::TimeSep));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(0)));
+    assert_eq!(scanner.next_token(), Ok(Token::Colon));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(23)));
+    assert_eq!(scanner.next_token(), Ok(Token::Colon));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(2)));        
+}
+
+#[test]
+fn parse_datetime_expr() {
+    let mut parser = Parser::new("2014.03.01T00:23:02");
+    let expr = parser.parse_expr().unwrap();
+    let dt = Utc.ymd(2014, 3, 1).and_hms(0, 23, 02);
+    assert_eq!(expr, Expr::DateTime(dt));
+}
 }

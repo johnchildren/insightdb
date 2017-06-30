@@ -1,8 +1,11 @@
 use std::cmp;
 use std::fmt;
+use std::io::Write;
 use std::ops::{Add, Sub, Mul, Div};
 
+use chrono::prelude::*;
 use parser::Parser;
+use tabwriter::TabWriter;
 
 #[derive(Debug, PartialEq)]
 pub enum Expr {
@@ -11,6 +14,7 @@ pub enum Expr {
     UnrFn(UnrOp, Box<Expr>),
     BinFn(Box<Expr>, BinOp, Box<Expr>),
     Str(String),
+    DateTime(DateTime<Utc>),
 }
 
 impl Expr {
@@ -256,10 +260,17 @@ pub struct Table {
 
 impl Table {
     pub fn from<S: Into<String>>(name: S, cols: Vec<Column>) -> Self {
+        let mut max_len = 0;
+        for col in &cols {
+            let col_len = col.len();
+            if col_len > max_len {
+                max_len = col_len;
+            }
+        }
         Table {
             name: name.into(),
             cols: cols,
-            len: 100,
+            len: max_len,
         }
     }
 
@@ -282,37 +293,28 @@ impl Table {
 
 impl fmt::Display for Table {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(
-            f,
-            "\n{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
-            "maxs(c)",
-            "mins(c)",
-            "sums(c)",
-            "c"
-        ));
-        try!(write!(
-            f,
-            "-----------|------------|------------|-----------\n"
-        ));
-        try!(write!(f, "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n", 1, 1, 1, 1));
-        try!(write!(f, "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n", 2, 1, 3, 2));
-        try!(write!(f, "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n", 3, 1, 6, 3));
-        try!(write!(
-            f,
-            "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
-            4,
-            1,
-            10,
-            4
-        ));
-        write!(
-            f,
-            "{0: <10} | {1: <10} | {2: <10} | {3: <10}\n",
-            5,
-            1,
-            15,
-            5
-        )
+        let mut s = String::new();
+        for col in &self.cols {
+            s.push_str(&col.name);
+            s.push_str("\t");
+        }
+        s.push_str("\n");
+        let n = cmp::min(20, self.len);
+        for i in 0..n {
+            for col in &self.cols {
+                match col.get(i) {
+                    Some(ref val) => s.push_str(val),
+                    None => s.push(' '),
+                }
+                s.push('\t');
+            }
+            s.push('\n');
+        }
+        let mut tw = TabWriter::new(vec![]);
+        tw.write_all(s.as_bytes()).unwrap();
+        tw.flush().unwrap();
+        let written = String::from_utf8(tw.into_inner().unwrap()).unwrap();
+        write!(f, "{}", written)
     }
 }
 
@@ -328,6 +330,14 @@ impl Column {
             name: name.into(),
             val: val,
         }
+    }
+
+    fn get(&self, pos: usize) -> Option<String> {
+        self.val.get(pos)
+    }
+
+    fn len(&self) -> usize {
+        self.val.len()
     }
 
     pub fn add(&self, rhs: &Column) -> Result<Column, ()> {
@@ -460,6 +470,15 @@ impl Val {
         Ok(val)
     }
 
+    fn len(&self) -> usize {
+        match *self {
+            Val::Int(_) => 1,
+            Val::IntVec(ref vec) => vec.len(),
+            Val::Str(_) => 1,
+            Val::StrVec(ref vec) => vec.len(),           
+        }
+    }
+
     fn sum(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
@@ -483,7 +502,7 @@ impl Val {
     fn max(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
-            Val::IntVec(ref vec) => Val::Int(*vec.iter().max().unwrap()),
+            Val::IntVec(ref vec) => Val::Int(vec_max(vec)),//Val::Int(*vec.iter().max().unwrap()),
             _ => unimplemented!(),
         };
         Ok(val)
@@ -501,7 +520,7 @@ impl Val {
     fn min(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
-            Val::IntVec(ref vec) => Val::Int(*vec.iter().min().unwrap()),
+            Val::IntVec(ref vec) => Val::Int(vec_min(vec)),
             _ => unimplemented!(),
         };
         Ok(val)
@@ -541,6 +560,18 @@ impl Val {
             _ => unimplemented!(),
         }
     }
+
+    fn get(&self, pos: usize) -> Option<String> {
+        match *self {
+            Val::Int(val) if pos == 0 => Some(val.to_string()),
+            Val::Int(_) => None,
+            Val::IntVec(ref vec) => vec.get(pos).map(|x| x.to_string()),
+            Val::Str(ref val) if pos == 0 => Some(val.to_string()),
+            Val::Str(_) => None,
+            Val::StrVec(ref vec) => vec.get(pos).map(|x| x.to_string()),
+            _ => unimplemented!(),
+        }
+    } 
 }
 
 impl fmt::Display for Val {
@@ -572,6 +603,28 @@ fn vec_mul<T: Mul<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
 #[inline]
 fn vec_div<T: Div<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
     a.iter().zip(b.iter()).map(|(x, y)| *x / *y).collect()
+}
+
+#[inline]
+fn vec_min(v: &[i64]) -> i64 {
+    let mut min_val = v[0];
+    for val in &v[1..] {
+        if *val < min_val {
+            min_val = *val;
+        }
+    }
+    min_val
+}
+
+#[inline]
+fn vec_max(v: &[i64]) -> i64 {
+    let mut max_val = v[0];
+    for val in &v[1..] {
+        if *val > max_val {
+            max_val = *val;
+        }
+    }
+    max_val
 }
 
 #[inline]
@@ -1002,9 +1055,16 @@ mod tests {
     }
 
     #[test]
-    fn column_range() {
+    fn column_intvec_range() {
         let col = Column::from("a", Val::IntVec(vec![5i64, 4, 1, 8, 10]));
         let exp = Column::from("range(a)", Val::IntVec(vec![1,2,3,4,5,6,7,8,9,10]));
         assert_eq!(col.range().unwrap(), exp);
-    }    
+    }  
+
+    #[test]
+    fn column_int_range() {
+        let col = Column::from("a", Val::Int(10));
+        let exp = Column::from("range(a)", Val::Int(10));
+        assert_eq!(col.range().unwrap(), exp);
+    }   
 }

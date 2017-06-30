@@ -7,24 +7,23 @@ extern crate tabwriter;
 mod engine;
 mod parser;
 
-use chrono::prelude::*;
-
 use std::io::{self, Write};
 use std::time::Instant;
 
 use engine::{Column, Database, Table, Val};
 
-fn test_db() -> Database {
-    let n = 5;
+fn test_db(n: usize) -> Database {
     let c1 = Column::from("a", Val::IntVec(vec![1; n]));
     let c2 = Column::from("b", Val::IntVec(vec![1; n]));
-    let c3 = Column::from("c", Val::IntVec(vec![1,2,3,4,5]));
+    let c3_val = (0..n).map(|x| x as i64).collect();
+    let c3 = Column::from("c", Val::IntVec(c3_val));
     let table = Table::from("t", vec![c1, c2, c3]);
     Database::from(vec![table])
 }
 
 fn start_repl() {
-    let db = test_db();
+    let n = 10_000_000;
+    let db = test_db(n);
     let mut cmd = String::new();
     loop {
         print!("insightdb> ");
@@ -40,7 +39,7 @@ fn start_repl() {
         match db.exec(&cmd) {
             Ok(table) => {
                 let dt = now.elapsed();
-                println!("query executed in {} nanoseconds", dt.as_secs() * 1_000_000_000 + dt.subsec_nanos() as u64);
+                println!("query executed in {:?}", dt);
                 println!("{}", table);
             }
             Err(err) => println!("error: {}", err),
