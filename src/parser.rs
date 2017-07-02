@@ -13,7 +13,7 @@ enum Token {
     Where,
     EOF,
     Underscore,
-    Int(i64),
+    Int(i32),
     Add,
     Sub,
     Sum,
@@ -107,7 +107,7 @@ impl Scanner {
             }
             self.pos += 1;
         }
-        match s.parse::<i64>() {
+        match s.parse::<i32>() {
             Ok(val) => Ok(Token::Int(val)),
             Err(_) => Err("cannot parse int"),
         }

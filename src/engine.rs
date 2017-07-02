@@ -1,16 +1,17 @@
 use std::cmp;
 use std::fmt;
 use std::io::Write;
-use std::ops::{Add, Sub, Mul, Div};
 
 use chrono::prelude::*;
 use parser::Parser;
 use tabwriter::TabWriter;
 
+use computation::*;
+
 #[derive(Debug, PartialEq)]
 pub enum Expr {
     Id(String),
-    Int(i64),
+    Int(i32),
     UnrFn(UnrOp, Box<Expr>),
     BinFn(Box<Expr>, BinOp, Box<Expr>),
     Str(String),
@@ -18,7 +19,8 @@ pub enum Expr {
 }
 
 impl Expr {
-    fn eval(&self, tbl: &Table) -> Result<Column, &'static str> {
+    #[inline]
+    fn eval<'b>(&self, tbl: &'b Table) -> Result<Column, &'static str> {
         match *self {
             Expr::Id(ref id) => {
                 match tbl.get(id) {
@@ -211,6 +213,7 @@ impl Query {
         parser.parse()
     }
 
+    #[inline]
     pub fn exec(&self, db: &Database) -> Result<Table, &'static str> {
         let tbl_id = match self.from {
             Expr::Id(ref id) => id,
@@ -241,10 +244,12 @@ impl Database {
         Database { tables: tables }
     }
 
+    #[inline]
     fn get(&self, name: &str) -> Option<&Table> {
         self.tables.iter().find(|tbl| tbl.name == name)
     }
 
+    #[inline]
     pub fn exec(&self, cmd: &str) -> Result<Table, &'static str> {
         let query = Query::from_str(cmd)?;
         query.exec(self)
@@ -332,10 +337,12 @@ impl Column {
         }
     }
 
+    #[inline]
     fn get(&self, pos: usize) -> Option<String> {
         self.val.get(pos)
     }
 
+    #[inline]
     fn len(&self) -> usize {
         self.val.len()
     }
@@ -364,6 +371,7 @@ impl Column {
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     fn sum(&self) -> Result<Column, &'static str> {
         let name = "sum(".to_string() + &self.name + ")";
         let val = self.val.sum()?;
@@ -421,13 +429,14 @@ impl Column {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Val {
-    IntVec(Vec<i64>),
-    Int(i64),
+    IntVec(Vec<i32>),
+    Int(i32),
     StrVec(Vec<String>),
     Str(String),
 }
 
 impl Val {
+    #[inline]
     pub fn add(&self, rhs: &Val) -> Result<Val, ()> {
         let val = match (self, rhs) {
             (&Val::IntVec(ref lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_add(lhs, rhs)),
@@ -440,6 +449,7 @@ impl Val {
         Ok(val)
     }
 
+    #[inline]
     pub fn sub(&self, rhs: &Val) -> Result<Val, ()> {
         let val = match (self, rhs) {
             (&Val::IntVec(ref lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_sub(lhs, rhs)),
@@ -450,10 +460,11 @@ impl Val {
         Ok(val)
     }
 
+    #[inline]
     pub fn mul(&self, rhs: &Val) -> Result<Val, ()> {
         let val = match (self, rhs) {
             (&Val::IntVec(ref lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_mul(lhs, rhs)),
-            (&Val::IntVec(ref lhs), &Val::Int(rhs)) => Val::IntVec(vec_scalar_mul(lhs, rhs)),
+            (&Val::IntVec(ref lhs), &Val::Int(rhs)) => Val::IntVec(veci32_i32mul(lhs, rhs)),
             (&Val::Int(lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_scalar_mul(rhs, lhs)),
             (&Val::Int(ref x), &Val::Int(y)) => Val::Int(x * y),
             _ => unimplemented!(),
@@ -461,6 +472,7 @@ impl Val {
         Ok(val)
     }
 
+    #[inline]
     pub fn div(&self, rhs: &Val) -> Result<Val, ()> {
         let val = match (self, rhs) {
             (&Val::IntVec(ref lhs), &Val::IntVec(ref rhs)) => Val::IntVec(vec_div(lhs, rhs)),
@@ -470,6 +482,7 @@ impl Val {
         Ok(val)
     }
 
+    #[inline]
     fn len(&self) -> usize {
         match *self {
             Val::Int(_) => 1,
@@ -479,16 +492,18 @@ impl Val {
         }
     }
 
+    #[inline]
     fn sum(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
-            Val::IntVec(ref vec) => Val::Int(vec.iter().sum()),
+            Val::IntVec(ref vec) => Val::Int(vec_sum(vec)),
             Val::Str(_) => return Err("cannot sum str"),
             Val::StrVec(_) => return Err("cannot sum strvec"),
         };
         Ok(val)
     }
 
+    #[inline]
     fn sums(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
@@ -498,11 +513,12 @@ impl Val {
         };
         Ok(val)
     }
-
+    
+    #[inline]
     fn max(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
-            Val::IntVec(ref vec) => Val::Int(vec_max(vec)),//Val::Int(*vec.iter().max().unwrap()),
+            Val::IntVec(ref vec) => Val::Int(vec_max(vec).unwrap()),//Val::Int(*vec.iter().max().unwrap()),
             _ => unimplemented!(),
         };
         Ok(val)
@@ -520,7 +536,7 @@ impl Val {
     fn min(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
-            Val::IntVec(ref vec) => Val::Int(vec_min(vec)),
+            Val::IntVec(ref vec) => Val::Int(vec_min(vec).unwrap()),
             _ => unimplemented!(),
         };
         Ok(val)
@@ -561,6 +577,7 @@ impl Val {
         }
     }
 
+    #[inline]
     fn get(&self, pos: usize) -> Option<String> {
         match *self {
             Val::Int(val) if pos == 0 => Some(val.to_string()),
@@ -585,158 +602,10 @@ impl fmt::Display for Val {
     }
 }
 
-#[inline]
-fn vec_add<T: Add<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
-    a.iter().zip(b.iter()).map(|(x, y)| *x + *y).collect()
-}
-
-#[inline]
-fn vec_sub<T: Sub<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
-    a.iter().zip(b.iter()).map(|(x, y)| *x - *y).collect()
-}
-
-#[inline]
-fn vec_mul<T: Mul<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
-    a.iter().zip(b.iter()).map(|(x, y)| *x * *y).collect()
-}
-
-#[inline]
-fn vec_div<T: Div<Output = T> + Copy>(a: &[T], b: &[T]) -> Vec<T> {
-    a.iter().zip(b.iter()).map(|(x, y)| *x / *y).collect()
-}
-
-#[inline]
-fn vec_min(v: &[i64]) -> i64 {
-    let mut min_val = v[0];
-    for val in &v[1..] {
-        if *val < min_val {
-            min_val = *val;
-        }
-    }
-    min_val
-}
-
-#[inline]
-fn vec_max(v: &[i64]) -> i64 {
-    let mut max_val = v[0];
-    for val in &v[1..] {
-        if *val > max_val {
-            max_val = *val;
-        }
-    }
-    max_val
-}
-
-#[inline]
-fn vec_maxs<T: Ord + Copy>(v: &[T]) -> Vec<T> {
-    assert!(!v.is_empty());
-    let mut max = v[0];
-    let mut maxs = Vec::with_capacity(v.len());
-    maxs.push(max);
-    for val in &v[1..] {
-        max = cmp::max(max, *val);
-        maxs.push(max);
-    }
-    maxs
-}
-
-#[inline]
-fn vec_products<T: Ord + Copy + Mul<Output = T>>(v: &[T]) -> Vec<T> {
-    assert!(!v.is_empty());
-    let mut product = v[0];
-    let mut products = Vec::with_capacity(v.len());
-    products.push(product);
-    for val in &v[1..] {
-        product = product * (*val);
-        products.push(product);
-    }
-    products
-}
-
-#[inline]
-fn vec_int_range(v: &[i64]) -> Vec<i64> {
-    assert!(!v.is_empty());
-    let mut min = v[0];
-    let mut max = min;
-    for val in &v[1..] {
-        max = cmp::max(*val, max);
-        min = cmp::min(*val, min);
-    }
-    let n = (max - min) as usize + 1;
-    let mut range = Vec::with_capacity(n);
-    for i in (0..n).map(|i| i as i64){
-        range.push(min + i)
-    }
-    range
-}
-
-#[inline]
-fn vec_sums<T: Ord + Copy + Add<Output = T>>(v: &[T]) -> Vec<T> {
-    assert!(!v.is_empty());
-    let mut sum = v[0];
-    let mut sums = Vec::with_capacity(v.len());
-    sums.push(sum);
-    for val in &v[1..] {
-        sum = sum + (*val);
-        sums.push(sum);
-    }
-    sums
-}
-
-#[inline]
-fn vec_mins<T: Ord + Copy>(v: &[T]) -> Vec<T> {
-    assert!(!v.is_empty());
-    let mut min = v[0];
-    let mut mins = Vec::with_capacity(v.len());
-    mins.push(min);
-    for val in &v[1..] {
-        min = cmp::min(min, *val);
-        mins.push(min);
-    }
-    mins
-}
-
-#[inline]
-fn ranged_vec(start: usize, end: usize) -> Vec<i64> {
-    (start..end).map(|x| x as i64).collect()
-}
-
-#[inline]
-fn vec_scalar_sub<T: Sub<Output = T> + Copy>(a: &[T], b: T) -> Vec<T> {
-    a.iter().map(|x| *x - b).collect()
-}
-
-#[inline]
-fn vec_scalar_add<T: Add<Output = T> + Copy>(a: &[T], b: T) -> Vec<T> {
-    a.iter().map(|x| *x + b).collect()
-}
-
-#[inline]
-fn vec_scalar_mul<T: Mul<Output = T> + Copy>(a: &[T], b: T) -> Vec<T> {
-    a.iter().map(|x| *x * b).collect()
-}
-
-#[inline]
-fn vec_scalar_div<T: Div<Output = T> + Copy>(a: &[T], b: T) -> Vec<T> {
-    a.iter().map(|x| *x / b).collect()
-}
-
-#[inline]
-fn str_add(a: &str, b: &str) -> String {
-    a.to_string() + b
-}
-
-#[inline]
-fn strs_add(a: &[String], b: &[String]) -> Vec<String> {
-    a.iter()
-        .zip(b.iter())
-        .map(|(x, y)| x.to_string() + y)
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use test::Bencher;
 
     const COL_LEN: usize = 10;
 
@@ -753,7 +622,7 @@ mod tests {
         Table::from(id.into(), cols)
     }
 
-    fn test_db() -> Database {
+    fn test_db() -> Database{
         let t1 = test_table("t1");
         let t2 = test_table("t2");
         let tables = vec![t1, t2];
@@ -1049,14 +918,14 @@ mod tests {
 
     #[test]
     fn range_val_intvec() {
-        let val = Val::IntVec(vec![5i64, 4, 1, 8, 10]);
+        let val = Val::IntVec(vec![5i32, 4, 1, 8, 10]);
         let actual = val.range().unwrap();
         assert_eq!(actual, Val::IntVec(vec![1,2,3,4,5,6,7,8,9,10]));
     }
 
     #[test]
     fn column_intvec_range() {
-        let col = Column::from("a", Val::IntVec(vec![5i64, 4, 1, 8, 10]));
+        let col = Column::from("a", Val::IntVec(vec![5i32, 4, 1, 8, 10]));
         let exp = Column::from("range(a)", Val::IntVec(vec![1,2,3,4,5,6,7,8,9,10]));
         assert_eq!(col.range().unwrap(), exp);
     }  
@@ -1066,5 +935,26 @@ mod tests {
         let col = Column::from("a", Val::Int(10));
         let exp = Column::from("range(a)", Val::Int(10));
         assert_eq!(col.range().unwrap(), exp);
-    }   
+    }  
+
+    #[bench]
+    fn bench_vec_iter_max(b: &mut Bencher) {
+        let n = 5;
+        let v: Vec<i32> = (0..n).map(|x| x as i32).collect();
+        b.iter(|| v.iter().max().unwrap())
+    } 
+
+    #[bench]
+    fn bench_vec_new_iter_max(b: &mut Bencher) {
+        let n = 5;
+        let v: Vec<i32> = (0..n).map(|x| x as i32).collect();
+        b.iter(|| vec_max_iter(&v))
+    }     
+
+    #[bench]
+    fn bench_vec_max(b: &mut Bencher) {
+        let n = 5;
+        let v: Vec<i32> = (0..n).map(|x| x as i32).collect();
+        b.iter(|| vec_max(&v))
+    }
 }
