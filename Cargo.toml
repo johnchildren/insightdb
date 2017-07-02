@@ -6,3 +6,4 @@ authors = ["jaupe"]
 [dependencies]
 tabwriter = "1"
 chrono = "0.4"
+rayon = "*"
