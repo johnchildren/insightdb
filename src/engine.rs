@@ -385,6 +385,7 @@ pub struct Column {
 }
 
 impl Column {
+    #[inline]
     pub fn from<S: Into<String>>(name: S, val: Val) -> Self {
         Column {
             name: name.into(),
@@ -401,25 +402,29 @@ impl Column {
     fn len(&self) -> usize {
         self.val.len()
     }
-
+    
+    #[inline]
     pub fn add(&self, rhs: &Column) -> Result<Column, ()> {
         let name = self.name.clone() + " + " + &rhs.name;
         let val = self.val.add(&rhs.val)?;
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     pub fn sub(&self, rhs: &Column) -> Result<Column, ()> {
         let name = self.name.clone() + " - " + &rhs.name;
         let val = self.val.sub(&rhs.val)?;
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     pub fn mul(&self, rhs: &Column) -> Result<Column, ()> {
         let name = self.name.clone() + " * " + &rhs.name;
         let val = self.val.mul(&rhs.val)?;
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     pub fn div(&self, rhs: &Column) -> Result<Column, ()> {
         let name = self.name.clone() + " / " + &rhs.name;
         let val = self.val.div(&rhs.val)?;
@@ -433,54 +438,63 @@ impl Column {
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     fn sums(&self) -> Result<Column, &'static str> {
         let name = "sums(".to_string() + &self.name + ")";
         let val = self.val.sums()?;
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     fn min(&self) -> Result<Column, &'static str> {
         let name = "min(".to_string() + &self.name + ")";
         let val = self.val.min()?;
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     fn mins(&self) -> Result<Column, &'static str> {
         let name = "min(".to_string() + &self.name + ")";
         let val = self.val.mins()?;
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     fn max(&self) -> Result<Column, &'static str> {
         let name = "max(".to_string() + &self.name + ")";
         let val = self.val.max()?;
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     fn maxs(&self) -> Result<Column, &'static str> {
         let name = "max(".to_string() + &self.name + ")";
         let val = self.val.maxs()?;
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     fn product(&self) -> Result<Column, &'static str> {
         let name = "product(".to_string() + &self.name + ")";
         let val = self.val.product()?;
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     fn products(&self) -> Result<Column, &'static str> {
         let name = "product(".to_string() + &self.name + ")";
         let val = self.val.products()?;
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     fn range(&self) -> Result<Column, &'static str> {
         let name = "range(".to_string() + &self.name + ")";
         let val = self.val.range()?;
         Ok(Column::from(name, val))
     }
 
+    #[inline]
     fn filter_gate(&self, pred: Predicate, val: Val) -> Vec<usize> {
         self.val.filter_gate(pred, val)
     }
@@ -583,6 +597,7 @@ impl Val {
         Ok(val)
     }
 
+    #[inline]
     fn maxs(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
@@ -592,6 +607,7 @@ impl Val {
         Ok(val)
     }
 
+    #[inline]
     fn min(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
@@ -601,6 +617,7 @@ impl Val {
         Ok(val)
     }
 
+    #[inline]
     fn mins(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
@@ -610,6 +627,7 @@ impl Val {
         Ok(val)
     }
 
+    #[inline]
     fn product(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
@@ -619,6 +637,7 @@ impl Val {
         Ok(val)
     }
 
+    #[inline]
     fn products(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
@@ -628,6 +647,7 @@ impl Val {
         Ok(val)
     }
 
+    #[inline]
     fn range(&self) -> Result<Val, &'static str> {
         match *self {
             Val::Int(val) => Ok(Val::Int(val)),
@@ -651,12 +671,21 @@ impl Val {
     #[inline]
     fn filter_gate(&self, pred: Predicate, val: Val) -> Vec<usize> {
         match (self, pred, val) {
-            (&Val::IntVec(ref vec), Predicate::Equal, Val::Int(val)) => {
+            (&Val::IntVec(ref vec), Predicate::Equal, Val::Int(val)) | (&Val::Int(val), Predicate::Equal, Val::IntVec(ref vec)) => {
                 vec.iter().enumerate().filter(|&(_,x)| *x == val).map(|(i,_)| i).collect()
-            }
-            (&Val::Int(val), Predicate::Equal, Val::IntVec(ref vec)) => {
-                vec.iter().enumerate().filter(|&(_,x)| *x == val).map(|(i,_)| i).collect()
-            }
+            }         
+            (&Val::IntVec(ref vec), Predicate::Less, Val::Int(val)) => {
+                vec.iter().enumerate().filter(|&(_,x)| *x < val).map(|(i,_)| i).collect()
+            }   
+            (&Val::IntVec(ref vec), Predicate::LessEqual, Val::Int(val)) => {
+                vec.iter().enumerate().filter(|&(_,x)| *x <= val).map(|(i,_)| i).collect()
+            }    
+            (&Val::IntVec(ref vec), Predicate::Greater, Val::Int(val)) => {
+                vec.iter().enumerate().filter(|&(_,x)| *x > val).map(|(i,_)| i).collect()
+            }   
+            (&Val::IntVec(ref vec), Predicate::GreaterEqual, Val::Int(val)) => {
+                vec.iter().enumerate().filter(|&(_,x)| *x >= val).map(|(i,_)| i).collect()
+            }                                             
             _ => unimplemented!()            
         }
     }
@@ -1009,13 +1038,49 @@ mod tests {
     }
 
     #[test]
-    fn eq_filter_col_1_range() {
+    fn filter_col_eq_int() {
         let filter = Filter::new(Expr::Id(String::from("c")), Predicate::Equal, Expr::Int(1));
         let tbl = test_table("t");
         let gate = filter.apply(&tbl).unwrap();
         let expected = vec![0]; 
         assert_eq!(gate, expected);
     }    
+
+    #[test]
+    fn filter_col_lt_int() {
+        let filter = Filter::new(Expr::Id(String::from("c")), Predicate::Less, Expr::Int(5));
+        let tbl = test_table("t");
+        let gate = filter.apply(&tbl).unwrap();
+        let expected = vec![0,1,2,3]; 
+        assert_eq!(gate, expected);
+    }   
+
+    #[test]
+    fn filter_col_lteq_int() {
+        let filter = Filter::new(Expr::Id(String::from("c")), Predicate::LessEqual, Expr::Int(5));
+        let tbl = test_table("t");
+        let gate = filter.apply(&tbl).unwrap();
+        let expected = vec![0,1,2,3, 4]; 
+        assert_eq!(gate, expected);
+    }   
+
+       #[test]
+    fn filter_col_gt_int() {
+        let filter = Filter::new(Expr::Id(String::from("c")), Predicate::Greater, Expr::Int(5));
+        let tbl = test_table("t");
+        let gate = filter.apply(&tbl).unwrap();
+        let expected = vec![5,6,7,8,9]; 
+        assert_eq!(gate, expected);
+    }   
+
+    #[test]
+    fn filter_col_gteq_int() {
+        let filter = Filter::new(Expr::Id(String::from("c")), Predicate::GreaterEqual, Expr::Int(5));
+        let tbl = test_table("t");
+        let gate = filter.apply(&tbl).unwrap();
+        let expected = vec![4,5,6,7,8,9]; 
+        assert_eq!(gate, expected);
+    }         
 
     #[bench]
     fn bench_vec_iter_max(b: &mut Bencher) {
