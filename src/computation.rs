@@ -6,17 +6,25 @@ use rayon::prelude::*;
 
 #[inline]
 pub fn vec_add(a: &[i32], b: &[i32]) -> Vec<i32> {
-    a.par_iter().zip(b.par_iter()).map(|(x, y)| *x + *y).collect()
+    a.par_iter()
+        .zip(b.par_iter())
+        .map(|(x, y)| *x + *y)
+        .collect()
 }
 
 #[inline]
-pub fn vec_add_mut(a: &mut [i32], b: &[i32])  {
-    a.par_iter_mut().zip(b.par_iter()).for_each(|(x,y)| *x *= *y)
+pub fn vec_add_mut(a: &mut [i32], b: &[i32]) {
+    a.par_iter_mut().zip(b.par_iter()).for_each(
+        |(x, y)| *x *= *y,
+    )
 }
 
 #[inline]
 pub fn vec_sub(a: &[i32], b: &[i32]) -> Vec<i32> {
-    a.par_iter().zip(b.par_iter()).map(|(x, y)| *x - *y).collect()
+    a.par_iter()
+        .zip(b.par_iter())
+        .map(|(x, y)| *x - *y)
+        .collect()
 }
 
 #[inline]
@@ -31,7 +39,10 @@ pub fn veci32_i32mul(a: &[i32], b: i32) -> Vec<i32> {
 
 #[inline]
 pub fn vec_div(a: &[i32], b: &[i32]) -> Vec<i32> {
-    a.par_iter().zip(b.par_iter()).map(|(x, y)| *x / *y).collect()
+    a.par_iter()
+        .zip(b.par_iter())
+        .map(|(x, y)| *x / *y)
+        .collect()
 }
 
 #[inline]
@@ -96,7 +107,7 @@ pub fn vec_int_range(v: &[i32]) -> Vec<i32> {
     }
     let n = (max - min) as usize + 1;
     let mut range = Vec::with_capacity(n);
-    for i in (0..n).map(|i| i as i32){
+    for i in (0..n).map(|i| i as i32) {
         range.push(min + i)
     }
     range
@@ -104,15 +115,20 @@ pub fn vec_int_range(v: &[i32]) -> Vec<i32> {
 
 #[inline]
 pub fn vec_sums(v: &[i32]) -> Vec<i32> {
-    v.iter().fold(Vec::with_capacity(v.len()), |mut acc, x| {
-        acc.push(*x);
-        acc
-    })
+    let mut scan = Vec::with_capacity(v.len());
+    let mut acc = 0;
+    for val in v {
+        acc += *val;
+        scan.push(acc);
+    }
+    scan
 }
 
 #[inline]
-pub fn vec_sum<'a, T>(v: &'a [T]) -> T 
-    where T:Send + Sum<&'a T> + Sum + Sync + Copy {
+pub fn vec_sum<'a, T>(v: &'a [T]) -> T
+where
+    T: Send + Sum<&'a T> + Sum + Sync + Copy,
+{
     v.par_iter().sum()
 }
 

@@ -1,4 +1,5 @@
-use engine::{Expr, Query, BinOp, UnrOp};
+use chrono::prelude::*;
+use engine::{Expr, Query, BinOp, UnrOp, Filter, Predicate};
 
 #[derive(Debug, PartialEq)]
 enum Token {
@@ -28,9 +29,12 @@ enum Token {
     Div,
     StrLit(String),
     Range,
-    Hyphen,
     Dot,
     TimeSep,
+    Til,
+    Less,
+    Equal,
+    Greater,
 }
 
 #[derive(Debug)]
@@ -41,6 +45,7 @@ struct Scanner {
 }
 
 impl Scanner {
+    #[inline]
     fn new(s: &str) -> Self {
         Scanner {
             cmd: s.chars().collect(),
@@ -49,6 +54,7 @@ impl Scanner {
         }
     }
 
+    #[inline]
     fn next_token(&mut self) -> Result<Token, &'static str> {
         let token = match self.cur_char() {
             Some(' ') => return self.scan_whitespace(),
@@ -66,6 +72,9 @@ impl Scanner {
             Some('\n') => Token::EOF,  
             Some('.') => Token::Dot,    
             Some(':') => Token::Colon, 
+            Some('<') => Token::Less,
+            Some('>') => Token::Greater,
+            Some('=') => Token::Equal,
             Some(c) => {
                 println!("unexpected char={:?}", c);
                 return Err("unexpected token");
@@ -99,7 +108,7 @@ impl Scanner {
             match self.cur_char() {
                 Some(c @ '0'..'9') => s.push(c),
                 Some('+') | Some('-') | Some('*') | Some('/') | Some(' ') | Some(',') |
-                Some('(') | Some(')') | Some(':') | Some('.') | Some('T') | None => break,
+                Some('(') | Some(')') | Some(':') | Some('.') | Some('T') | Some('<') | Some('=') | Some('>') | None => break,
                 Some(c) => {
                     println!("c = {}", c);
                     return Err("unexpected digit");
@@ -135,7 +144,7 @@ impl Scanner {
         loop {
             match self.cur_char() {
                 Some('(') | Some(')') | Some(' ') | Some(',') | Some('+') | Some('-') |
-                Some('*') | Some('/') | Some('\n') | None => break,
+                Some('*') | Some('/') | Some('\n') | Some('<') | Some('=') | Some('>') | None => break,
                 Some(c) => id.push(c), 
             }
             self.pos += 1;
@@ -154,6 +163,7 @@ impl Scanner {
             "maxs" => Token::Maxs,
             "mins" => Token::Mins,
             "range" => Token::Range,
+            "til" => Token::Til,
             _ => Token::Id(id),
         };
         Ok(tok)
@@ -222,10 +232,53 @@ impl Parser {
     }
 
     #[inline]
+    fn parse_filter(&mut self) -> Result<Filter, &'static str> {
+        let lhs = self.parse_expr()?;
+        let op = self.parse_predicate()?;
+        let rhs = self.parse_expr()?;
+        Ok(Filter::new(lhs, op, rhs))
+    }
+
+    #[inline]
+    fn parse_predicate(&mut self) -> Result<Predicate, &'static str> {
+        match self.next_token() {
+            Ok(Token::Equal) => {
+                match self.next_token() {
+                    Ok(Token::Equal) => Ok(Predicate::Equal),
+                    Ok(_) => Err("unexpected token"),
+                    Err(err) => Err(err),
+                }
+            }
+            Ok(Token::Less) => {
+                match self.peek_next_token() {
+                    Ok(Token::Equal) => {
+                        let _ = self.next_token()?;
+                        Ok(Predicate::LessEqual)
+                    }
+                    Ok(_) => Ok(Predicate::Less),
+                    Err(err) => Err(err),
+                }
+            }
+            Ok(Token::Greater) => {
+                 match self.peek_next_token() {
+                    Ok(Token::Equal) => {
+                        let _ = self.next_token()?;
+                        Ok(Predicate::GreaterEqual)
+                    }
+                    Ok(_) => Ok(Predicate::Greater),
+                    Err(err) => Err(err),
+                }
+            }
+            Ok(_) => Err("unexpected token"),
+            Err(err) => Err(err),
+        }
+    }
+
+    #[inline]
     fn parse_expr(&mut self) -> Result<Expr, &'static str> {
         let lhs = match self.next_token() {
             Ok(Token::Id(id)) => Expr::Id(id),
-            Ok(Token::Int(val)) => Expr::Int(val),
+            Ok(Token::Int(val)) => self.parse_num(val)?,
             Ok(Token::Sum) => {
                 match self.parse_unr_fn(UnrOp::Sum) {
                     Ok(expr) => expr,
@@ -273,7 +326,13 @@ impl Parser {
                     Ok(expr) => expr,
                     Err(err) => return Err(err),
                 }
-            }     
+            } 
+            Ok(Token::Til) => {
+                match self.parse_unr_fn(UnrOp::Til) {
+                    Ok(expr) => expr,
+                    Err(err) => return Err(err),
+                }
+            }                 
             Ok(Token::Range) => {
                 match self.parse_range_fn() {
                     Ok(expr) => expr,
@@ -302,6 +361,69 @@ impl Parser {
         //println!("rhs={:?}", rhs);
         Ok(Expr::BinFn(Box::new(lhs), op, Box::new(rhs)))
     }
+
+    fn parse_num(&mut self, val: i32) -> Result<Expr, &'static str> {
+        match self.peek_next_token() {
+            Ok(Token::Dot) => self.parse_datetime(val),
+            Ok(_) => Ok(Expr::Int(val)),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn parse_datetime(&mut self, year: i32) -> Result<Expr, &'static str> {
+        match self.next_token() {
+            Ok(Token::Dot) => (),
+            Ok(_) => return Err("expected dot after year"),
+            Err(err) => return Err(err),
+        }
+        let month = match self.next_token() {
+            Ok(Token::Int(val)) => val,
+            Ok(_) => return Err("unexpected dot before month"),
+            Err(err) => return Err(err),
+        };
+        match self.next_token() {
+            Ok(Token::Dot) => (),
+            Ok(_) => return Err("expected dot after month"),
+            Err(err) => return Err(err),
+        }
+        let date = match self.next_token() {
+            Ok(Token::Int(val)) => val,
+            Ok(_) => return Err("unexpected dot before month"),
+            Err(err) => return Err(err),
+        };
+        match self.next_token() {
+            Ok(Token::TimeSep) => (),
+            Ok(_) => return Err("expected dot after month"),
+            Err(err) => return Err(err),
+        } 
+        let hour = match self.next_token() {
+            Ok(Token::Int(val)) => val as u32,
+            Ok(_) => return Err("unexpected dot before month"),
+            Err(err) => return Err(err),
+        };  
+        match self.next_token() {
+            Ok(Token::Colon) => (),
+            Ok(_) => return Err("expected dot after month"),
+            Err(err) => return Err(err),
+        }     
+        let min = match self.next_token() {
+            Ok(Token::Int(val)) => val as u32,
+            Ok(_) => return Err("unexpected dot before month"),
+            Err(err) => return Err(err),
+        }; 
+        match self.next_token() {
+            Ok(Token::Colon) => (),
+            Ok(_) => return Err("expected dot after month"),
+            Err(err) => return Err(err),
+        }   
+        let sec = match self.next_token() {
+            Ok(Token::Int(val)) => val as u32,
+            Ok(_) => return Err("unexpected dot before month"),
+            Err(err) => return Err(err),
+        };                                      
+        let dt = Utc.ymd(year, month as u32, date as u32).and_hms(hour, min, sec);
+        Ok(Expr::DateTime(dt))       
+    }    
 
     fn expect(&mut self, exp: Token) -> Option<&'static str> {
         match self.next_token() {
@@ -373,7 +495,7 @@ impl Parser {
     }
 
     #[inline]
-    fn parse_where(&mut self) -> Result<Option<Vec<Expr>>, &'static str> {
+    fn parse_where(&mut self) -> Result<Option<Vec<Filter>>, &'static str> {
         match self.peek_next_token() {
             Ok(Token::Where) => {
                 let _ = self.next_token().unwrap();
@@ -381,10 +503,10 @@ impl Parser {
             Ok(_) => return Ok(None),
             Err(_) => return Err("cannot get next token parsing where"),
         }
-        let mut exprs = Vec::new();
+        let mut filters = Vec::new();
         loop {
-            match self.parse_expr() {
-                Ok(expr) => exprs.push(expr),
+            match self.parse_filter() {
+                Ok(filter) => filters.push(filter),
                 Err(err) => return Err(err),
             }
             match self.peek_next_token() {
@@ -396,7 +518,7 @@ impl Parser {
                 Err(err) => return Err(err),
             }
         }
-        Ok(Some(exprs))
+        Ok(Some(filters))
     }
 
     #[inline]
@@ -407,7 +529,6 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use chrono::prelude::*;
     use super::*;
 
 #[test]
@@ -542,13 +663,13 @@ fn parse_str_literal_expr() {
 
 #[test]
 fn parse_query() {
-    let mut parser = Parser::new("select b,c by a from t where f1,f2");
+    let mut parser = Parser::new("select b,c by a from t where b==1,c>2");
     let select = vec![Expr::Id(String::from("b")), Expr::Id(String::from("c"))];
     let by = Some(vec![Expr::Id(String::from("a"))]);
     let from = Expr::Id(String::from("t"));
     let filters = Some(vec![
-        Expr::Id(String::from("f1")),
-        Expr::Id(String::from("f2")),
+        Filter::new(Expr::Id("b".to_string()), Predicate::Equal, Expr::Int(1)),
+        Filter::new(Expr::Id("c".to_string()), Predicate::Greater, Expr::Int(2)),
     ]);
     assert_eq!(
         parser.parse().unwrap(),
@@ -759,5 +880,138 @@ fn parse_datetime_expr() {
     let expr = parser.parse_expr().unwrap();
     let dt = Utc.ymd(2014, 3, 1).and_hms(0, 23, 02);
     assert_eq!(expr, Expr::DateTime(dt));
+}
+
+#[test]
+fn lex_lessequal_filter() {
+    let mut scanner = Scanner::new("c<=1");
+    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("c"))));
+    assert_eq!(scanner.next_token(), Ok(Token::Less));
+    assert_eq!(scanner.next_token(), Ok(Token::Equal));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));        
+}
+
+#[test]
+fn lex_less_filter() {
+    let mut scanner = Scanner::new("c<1");
+    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("c"))));
+    assert_eq!(scanner.next_token(), Ok(Token::Less));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));        
+}
+
+#[test]
+fn lex_ge_filter() {
+    let mut scanner = Scanner::new("c>=1");
+    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("c"))));
+    assert_eq!(scanner.next_token(), Ok(Token::Greater));
+    assert_eq!(scanner.next_token(), Ok(Token::Equal));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));        
+}
+
+#[test]
+fn lex_g_filter() {
+    let mut scanner = Scanner::new("c>1");
+    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("c"))));
+    assert_eq!(scanner.next_token(), Ok(Token::Greater));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));        
+}
+
+#[test]
+fn lex_eq_filter() {
+    let mut scanner = Scanner::new("c==1");
+    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("c"))));
+    assert_eq!(scanner.next_token(), Ok(Token::Equal));
+    assert_eq!(scanner.next_token(), Ok(Token::Equal));
+    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));        
+}
+
+#[test]
+fn parse_id_eq_int_filter() {
+    let mut parser = Parser::new("c==1");
+    let filter = Filter::new(Expr::Id("c".to_string()), Predicate::Equal, Expr::Int(1));
+    assert_eq!(parser.parse_filter(), Ok(filter));
+}
+
+#[test]
+fn parse_int_eq_id_filter() {
+    let mut parser = Parser::new("1==c");
+    let filter = Filter::new(Expr::Int(1), Predicate::Equal, Expr::Id("c".to_string()));
+    assert_eq!(parser.parse_filter(), Ok(filter));
+}
+
+#[test]
+fn parse_id_lesseq_int_filter() {
+    let mut parser = Parser::new("c <= 1");
+    let filter = Filter::new(Expr::Id("c".to_string()), Predicate::LessEqual, Expr::Int(1));
+    assert_eq!(parser.parse_filter(), Ok(filter));
+}
+
+#[test]
+fn parse_int_lesseq_id_filter() {
+    let mut parser = Parser::new("1<=c");
+    let filter = Filter::new(Expr::Int(1), Predicate::LessEqual, Expr::Id("c".to_string()));
+    assert_eq!(parser.parse_filter(), Ok(filter));
+}
+
+#[test]
+fn parse_id_less_int_filter() {
+    let mut parser = Parser::new("c<1");
+    let filter = Filter::new(Expr::Id("c".to_string()), Predicate::Less, Expr::Int(1));
+    assert_eq!(parser.parse_filter(), Ok(filter));
+}
+
+#[test]
+fn parse_int_less_id_filter() {
+    let mut parser = Parser::new("1<c");
+    let filter = Filter::new(Expr::Int(1), Predicate::Less, Expr::Id("c".to_string()));
+    assert_eq!(parser.parse_filter(), Ok(filter));
+}
+
+#[test]
+fn parse_id_gteq_int_filter() {
+    let mut parser = Parser::new("c>=1");
+    let filter = Filter::new(Expr::Id("c".to_string()), Predicate::GreaterEqual, Expr::Int(1));
+    assert_eq!(parser.parse_filter(), Ok(filter));
+}
+
+#[test]
+fn parse_int_gteq_id_filter() {
+    let mut parser = Parser::new("1>=c");
+    let filter = Filter::new(Expr::Int(1), Predicate::GreaterEqual, Expr::Id("c".to_string()));
+    assert_eq!(parser.parse_filter(), Ok(filter));
+}
+
+#[test]
+fn parse_id_gt_int_filter() {
+    let mut parser = Parser::new("c>1");
+    let filter = Filter::new(Expr::Id("c".to_string()), Predicate::Greater, Expr::Int(1));
+    assert_eq!(parser.parse_filter(), Ok(filter));
+}
+
+#[test]
+fn parse_int_gt_id_filter() {
+    let mut parser = Parser::new("1>c");
+    let filter = Filter::new(Expr::Int(1), Predicate::Greater, Expr::Id("c".to_string()));
+    assert_eq!(parser.parse_filter(), Ok(filter));
+}
+
+#[test]
+fn parse_where_filters() {
+    let mut parser = Parser::new("where a==1,b<=2,c>=5000000");
+    let filters = parser.parse_where().unwrap().unwrap();
+    assert_eq!(filters.len(), 3);
+    let f = Filter::new(Expr::Id("a".to_string()), Predicate::Equal, Expr::Int(1));
+    assert_eq!(filters[0], f);
+    let f = Filter::new(Expr::Id("b".to_string()), Predicate::LessEqual, Expr::Int(2));
+    assert_eq!(filters[1], f);    
+    let f = Filter::new(Expr::Id("c".to_string()), Predicate::GreaterEqual, Expr::Int(5_000_000));    
+    assert_eq!(filters[2], f);    
+}
+
+#[test]
+fn parse_where_empty() {
+    let mut parser = Parser::new("");
+    let filters = parser.parse_where();
+    assert_eq!(filters, Ok(None));
 }
 }

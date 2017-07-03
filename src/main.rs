@@ -11,10 +11,34 @@ mod engine;
 mod parser;
 mod computation;
 
+use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::time::Instant;
 
+
 use engine::{Column, Database, Table, Val};
+
+const CMD_HISTORY_LEN: usize = 10;
+
+#[derive(Debug)]
+struct CmdHistory {
+    cmds: VecDeque<String>,
+}
+
+impl CmdHistory {
+    fn new() -> Self {
+        CmdHistory {
+            cmds: VecDeque::with_capacity(CMD_HISTORY_LEN),
+        }
+    }
+
+    fn push(&mut self, cmd: String) {
+        if self.cmds.len() == CMD_HISTORY_LEN {
+            self.cmds.pop_front();
+        }
+        self.cmds.push_back(cmd);
+    }
+}
 
 fn test_db(n: usize) -> Database {
     let c1 = Column::from("a", Val::IntVec(vec![1; n]));
@@ -28,8 +52,9 @@ fn test_db(n: usize) -> Database {
 fn start_repl() {
     let n = 10_000_000;
     let db = test_db(n);
-    let mut cmd = String::new();
+    
     loop {
+        let mut cmd = String::new();
         print!("insightdb> ");
         io::stdout().flush().unwrap();       
         match io::stdin().read_line(&mut cmd) {
@@ -49,7 +74,6 @@ fn start_repl() {
             }
             Err(err) => println!("error: {}", err),
         }
-        cmd.clear();
     }
 }
 

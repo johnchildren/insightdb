@@ -1,12 +1,53 @@
 use std::cmp;
 use std::fmt;
 use std::io::Write;
+use std::time::Instant;
 
 use chrono::prelude::*;
 use parser::Parser;
 use tabwriter::TabWriter;
 
 use computation::*;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Predicate {
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    Equal,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Filter {
+    lhs: Expr,
+    op: Predicate,
+    rhs: Expr,
+}
+
+impl Filter {
+    pub fn new(lhs: Expr, op: Predicate, rhs: Expr) -> Self {
+        Filter {
+            lhs: lhs,
+            op: op,
+            rhs: rhs,
+        }
+    }
+
+    fn apply(&self, table: &Table) -> Result<Vec<usize>, &'static str> {
+        match (&self.lhs, &self.op, &self.rhs) {
+            (&Expr::Id(ref id), op, &Expr::Int(val)) => {
+                let col = match table.get(id) {
+                    Some(col) => col,
+                    None => return Err("cannot find col"),
+                };
+                let gate = col.filter_gate(op.clone(), Val::Int(val));
+                Ok(gate)
+            }
+            _ => unimplemented!(),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Expr {
@@ -34,9 +75,20 @@ impl Expr {
                 Ok(Column::from(name, val))
             }
             Expr::Int(val) => Ok(Column::from(val.to_string(), Val::Int(val))),
+            Expr::UnrFn(UnrOp::Til, box Expr::Int(n)) => {
+                let name = "til(".to_string() + &n.to_string() + ")";
+                let val = Val::IntVec(ranged_vec(0, n as usize));
+                Ok(Column::from(name, val))
+            }
+            Expr::UnrFn(UnrOp::Sum, box Expr::UnrFn(UnrOp::Til, box Expr::Int(n))) => {
+                println!("inside");
+                let name = "sum(til(".to_string() + &n.to_string() + "))";
+                let val = Val::Int(n * (n + 1) / 2);
+                Ok(Column::from(name, val))
+            }            
             Expr::UnrFn(UnrOp::Sum, box Expr::UnrFn(UnrOp::Range, box Expr::Int(n))) => {
                 let name = "sum(range(".to_string() + &n.to_string() + "))";
-                let val = Val::Int(n*(n+1)/2);
+                let val = Val::Int(n * (n + 1) / 2);
                 Ok(Column::from(name, val))
             }
             Expr::UnrFn(UnrOp::Sum, box Expr::Id(ref id)) => {
@@ -183,6 +235,7 @@ pub enum UnrOp {
     Product,
     Products,
     Range,
+    Til,
 }
 
 #[derive(Debug, PartialEq)]
@@ -190,7 +243,7 @@ pub struct Query {
     select: Vec<Expr>,
     by: Option<Vec<Expr>>,
     from: Expr,
-    filters: Option<Vec<Expr>>,
+    filters: Option<Vec<Filter>>,
 }
 
 impl Query {
@@ -198,7 +251,7 @@ impl Query {
         select: Vec<Expr>,
         by: Option<Vec<Expr>>,
         from: Expr,
-        filters: Option<Vec<Expr>>,
+        filters: Option<Vec<Filter>>,
     ) -> Self {
         Query {
             select: select,
@@ -224,12 +277,14 @@ impl Query {
             None => return Err("cannot find table"),
         };
         let mut cols = Vec::new();
+        let start = Instant::now();
         for expr in &self.select {
             match expr.eval(tbl) {
                 Ok(col) => cols.push(col),
                 Err(err) => return Err(err),
             }
         }
+        println!("{:?}", start.elapsed());
         Ok(Table::from(tbl_id.to_string(), cols))
     }
 }
@@ -425,6 +480,10 @@ impl Column {
         let val = self.val.range()?;
         Ok(Column::from(name, val))
     }
+
+    fn filter_gate(&self, pred: Predicate, val: Val) -> Vec<usize> {
+        self.val.filter_gate(pred, val)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -513,7 +572,7 @@ impl Val {
         };
         Ok(val)
     }
-    
+
     #[inline]
     fn max(&self) -> Result<Val, &'static str> {
         let val = match *self {
@@ -586,9 +645,21 @@ impl Val {
             Val::Str(ref val) if pos == 0 => Some(val.to_string()),
             Val::Str(_) => None,
             Val::StrVec(ref vec) => vec.get(pos).map(|x| x.to_string()),
-            _ => unimplemented!(),
         }
-    } 
+    }
+
+    #[inline]
+    fn filter_gate(&self, pred: Predicate, val: Val) -> Vec<usize> {
+        match (self, pred, val) {
+            (&Val::IntVec(ref vec), Predicate::Equal, Val::Int(val)) => {
+                vec.iter().enumerate().filter(|&(_,x)| *x == val).map(|(i,_)| i).collect()
+            }
+            (&Val::Int(val), Predicate::Equal, Val::IntVec(ref vec)) => {
+                vec.iter().enumerate().filter(|&(_,x)| *x == val).map(|(i,_)| i).collect()
+            }
+            _ => unimplemented!()            
+        }
+    }
 }
 
 impl fmt::Display for Val {
@@ -622,7 +693,7 @@ mod tests {
         Table::from(id.into(), cols)
     }
 
-    fn test_db() -> Database{
+    fn test_db() -> Database {
         let t1 = test_table("t1");
         let t2 = test_table("t2");
         let tables = vec![t1, t2];
@@ -920,36 +991,45 @@ mod tests {
     fn range_val_intvec() {
         let val = Val::IntVec(vec![5i32, 4, 1, 8, 10]);
         let actual = val.range().unwrap();
-        assert_eq!(actual, Val::IntVec(vec![1,2,3,4,5,6,7,8,9,10]));
+        assert_eq!(actual, Val::IntVec(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
     }
 
     #[test]
     fn column_intvec_range() {
         let col = Column::from("a", Val::IntVec(vec![5i32, 4, 1, 8, 10]));
-        let exp = Column::from("range(a)", Val::IntVec(vec![1,2,3,4,5,6,7,8,9,10]));
+        let exp = Column::from("range(a)", Val::IntVec(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
         assert_eq!(col.range().unwrap(), exp);
-    }  
+    }
 
     #[test]
     fn column_int_range() {
         let col = Column::from("a", Val::Int(10));
         let exp = Column::from("range(a)", Val::Int(10));
         assert_eq!(col.range().unwrap(), exp);
-    }  
+    }
+
+    #[test]
+    fn eq_filter_col_1_range() {
+        let filter = Filter::new(Expr::Id(String::from("c")), Predicate::Equal, Expr::Int(1));
+        let tbl = test_table("t");
+        let gate = filter.apply(&tbl).unwrap();
+        let expected = vec![0]; 
+        assert_eq!(gate, expected);
+    }    
 
     #[bench]
     fn bench_vec_iter_max(b: &mut Bencher) {
         let n = 5;
         let v: Vec<i32> = (0..n).map(|x| x as i32).collect();
         b.iter(|| v.iter().max().unwrap())
-    } 
+    }
 
     #[bench]
     fn bench_vec_new_iter_max(b: &mut Bencher) {
         let n = 5;
         let v: Vec<i32> = (0..n).map(|x| x as i32).collect();
         b.iter(|| vec_max_iter(&v))
-    }     
+    }
 
     #[bench]
     fn bench_vec_max(b: &mut Bencher) {
