@@ -1,13 +1,17 @@
+use std::collections::BTreeMap;
 use std::cmp;
 use std::fmt;
 use std::io::Write;
 use std::time::Instant;
 
-use chrono::prelude::*;
 use parser::Parser;
-use tabwriter::TabWriter;
-
+use tables::{InMemoryColumn, Table, InMemoryTable, KeyedInMemoryTable};
 use computation::*;
+use databases::InMemoryDb;
+use aggregators::*;
+
+use chrono::prelude::*;
+
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Predicate {
@@ -61,7 +65,7 @@ pub enum Expr {
 
 impl Expr {
     #[inline]
-    fn eval<'b>(&self, tbl: &'b Table) -> Result<Column, &'static str> {
+    fn eval<'b>(&self, tbl: &'b InMemoryTable) -> Result<InMemoryColumn, &'static str> {
         match *self {
             Expr::Id(ref id) => {
                 match tbl.get(id) {
@@ -72,24 +76,24 @@ impl Expr {
             Expr::Str(ref s) => {
                 let name = s.clone();
                 let val = Val::Str(s.clone());
-                Ok(Column::from(name, val))
+                Ok(InMemoryColumn::from(name, val))
             }
-            Expr::Int(val) => Ok(Column::from(val.to_string(), Val::Int(val))),
+            Expr::Int(val) => Ok(InMemoryColumn::from(val.to_string(), Val::Int(val))),
             Expr::UnrFn(UnrOp::Til, box Expr::Int(n)) => {
                 let name = "til(".to_string() + &n.to_string() + ")";
                 let val = Val::IntVec(ranged_vec(0, n as usize));
-                Ok(Column::from(name, val))
+                Ok(InMemoryColumn::from(name, val))
             }
             Expr::UnrFn(UnrOp::Sum, box Expr::UnrFn(UnrOp::Til, box Expr::Int(n))) => {
                 println!("inside");
                 let name = "sum(til(".to_string() + &n.to_string() + "))";
                 let val = Val::Int(n * (n + 1) / 2);
-                Ok(Column::from(name, val))
+                Ok(InMemoryColumn::from(name, val))
             }            
             Expr::UnrFn(UnrOp::Sum, box Expr::UnrFn(UnrOp::Range, box Expr::Int(n))) => {
                 let name = "sum(range(".to_string() + &n.to_string() + "))";
                 let val = Val::Int(n * (n + 1) / 2);
-                Ok(Column::from(name, val))
+                Ok(InMemoryColumn::from(name, val))
             }
             Expr::UnrFn(UnrOp::Sum, box Expr::Id(ref id)) => {
                 let col = match tbl.get(id) {
@@ -150,7 +154,7 @@ impl Expr {
             Expr::UnrFn(UnrOp::Range, box Expr::Int(n)) => {
                 let val = Val::IntVec(ranged_vec(0, n as usize));
                 let name = "range(".to_string() + &n.to_string() + ")";
-                Ok(Column::from(name, val))
+                Ok(InMemoryColumn::from(name, val))
             } 
             Expr::UnrFn(UnrOp::Range, box Expr::Id(ref id)) => {
                 let col = tbl.get(id).unwrap();
@@ -159,12 +163,12 @@ impl Expr {
             Expr::BinFn(box Expr::Int(lhs), BinOp::Range, box Expr::Int(rhs)) => {
                 let name = "range(".to_string() + &lhs.to_string() + ", " + &rhs.to_string() + ")";
                 let val = Val::IntVec(ranged_vec(lhs as usize, rhs as usize));
-                return Ok(Column::from(name, val));
+                return Ok(InMemoryColumn::from(name, val));
             }
             Expr::BinFn(box Expr::Str(ref lhs), BinOp::Add, box Expr::Str(ref rhs)) => {
                 let val = lhs.to_string() + &rhs;
                 let name = val.clone();
-                return Ok(Column::from(name, Val::Str(val)));
+                return Ok(InMemoryColumn::from(name, Val::Str(val)));
             }
             Expr::BinFn(box Expr::Id(ref id1), BinOp::Add, box Expr::Id(ref id2)) => {
                 let (lhs, rhs) = match tbl.get_2(id1, id2) {
@@ -247,6 +251,7 @@ pub struct Query {
 }
 
 impl Query {
+    #[inline]
     pub fn from(
         select: Vec<Expr>,
         by: Option<Vec<Expr>>,
@@ -261,242 +266,89 @@ impl Query {
         }
     }
 
+    #[inline]
     pub fn from_str(cmd: &str) -> Result<Self, &'static str> {
         let mut parser = Parser::new(cmd);
         parser.parse()
     }
 
     #[inline]
-    pub fn exec(&self, db: &Database) -> Result<Table, &'static str> {
+    pub fn has_groupings(&self) -> bool {
+        if let Some(ref bys) = self.by {
+            return !bys.is_empty();
+        }
+        false
+    } 
+
+    fn table<'a>(&self, db: &'a InMemoryDb) -> Result<&'a InMemoryTable, &'static str> {
         let tbl_id = match self.from {
             Expr::Id(ref id) => id,
             _ => return Err("unexpteced from expr"),
         };
-        let tbl = match db.get(tbl_id) {
-            Some(tbl) => tbl,
-            None => return Err("cannot find table"),
-        };
+        match db.get(tbl_id) {
+            Some(tbl) => Ok(tbl),
+            None =>  Err("cannot find table"),
+        }
+    }
+
+    pub fn cols(&self, table: &InMemoryTable) -> Result<Vec<InMemoryColumn>, &'static str> {
         let mut cols = Vec::new();
-        let start = Instant::now();
         for expr in &self.select {
-            match expr.eval(tbl) {
+            match expr.eval(table) {
                 Ok(col) => cols.push(col),
                 Err(err) => return Err(err),
             }
         }
-        println!("{:?}", start.elapsed());
-        Ok(Table::from(tbl_id.to_string(), cols))
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Database {
-    tables: Vec<Table>,
-}
-
-impl Database {
-    pub fn from(tables: Vec<Table>) -> Self {
-        Database { tables: tables }
+        Ok(cols)
     }
 
     #[inline]
-    fn get(&self, name: &str) -> Option<&Table> {
-        self.tables.iter().find(|tbl| tbl.name == name)
+    pub fn exec(&self, db: &InMemoryDb) -> Result<Box<Table>, &'static str> {
+        let ref_table = self.table(db)?;
+        let cols = self.cols(ref_table)?;
+        let table = InMemoryTable::from(ref_table.name(), cols);
+        Ok(Box::new(table))
     }
 
     #[inline]
-    pub fn exec(&self, cmd: &str) -> Result<Table, &'static str> {
-        let query = Query::from_str(cmd)?;
-        query.exec(self)
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Table {
-    name: String,
-    cols: Vec<Column>,
-    len: usize,
-}
-
-impl Table {
-    pub fn from<S: Into<String>>(name: S, cols: Vec<Column>) -> Self {
-        let mut max_len = 0;
-        for col in &cols {
-            let col_len = col.len();
-            if col_len > max_len {
-                max_len = col_len;
-            }
-        }
-        Table {
-            name: name.into(),
-            cols: cols,
-            len: max_len,
-        }
-    }
-
-    pub fn get(&self, name: &str) -> Option<&Column> {
-        self.cols.iter().find(|col| col.name == name)
-    }
-
-    pub fn get_2(&self, t1: &str, t2: &str) -> Option<(&Column, &Column)> {
-        let col1 = match self.get(t1) {
+    pub fn exec_keyed(&self, db: &InMemoryDb) -> Result<Box<Table>, &'static str> {
+        let ref_table = self.table(db)?;
+        let a_col = match ref_table.get("a") {
             Some(col) => col,
-            None => return None,
+            None => return Err("cannot find a col"),
         };
-        let col2 = match self.get(t2) {
+        let c_col = match ref_table.get("c") {
             Some(col) => col,
-            None => return None,
+            None => return Err("cannot find b col"),
+        };        
+        let a_vec = match &a_col.val {
+            &Val::IntVec(ref vec) => vec,
+            _ => return Err("expected int vec"),
         };
-        Some((col1, col2))
-    }
-}
-
-impl fmt::Display for Table {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut s = String::new();
-        for col in &self.cols {
-            s.push_str(&col.name);
-            s.push_str("\t");
+        let c_vec = match &c_col.val {
+            &Val::IntVec(ref vec) => vec,
+            _ => return Err("expected int vec"),
+        }; 
+        // aggregations
+        let mut aggregations: BTreeMap<i32, Box<Aggregate<i32>>> = BTreeMap::new();      
+        for (key, val) in c_vec.iter().zip(a_vec.iter()) {
+            let agg = Box::new(SumAggregate::new());
+            aggregations.entry(*key).or_insert(agg).push(*val);
         }
-        s.push_str("\n");
-        let n = cmp::min(20, self.len);
-        for i in 0..n {
-            for col in &self.cols {
-                match col.get(i) {
-                    Some(ref val) => s.push_str(val),
-                    None => s.push(' '),
-                }
-                s.push('\t');
-            }
-            s.push('\n');
+        // convert aggregations to keyed table
+        let mut key_vec = Vec::with_capacity(aggregations.len());
+        let mut val_vec = Vec::with_capacity(aggregations.len());
+        for (key, agg) in aggregations {
+            key_vec.push(key);
+            let val = agg.aggregate();
+            val_vec.push(*val);
         }
-        let mut tw = TabWriter::new(vec![]);
-        tw.write_all(s.as_bytes()).unwrap();
-        tw.flush().unwrap();
-        let written = String::from_utf8(tw.into_inner().unwrap()).unwrap();
-        write!(f, "{}", written)
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Column {
-    name: String,
-    val: Val,
-}
-
-impl Column {
-    #[inline]
-    pub fn from<S: Into<String>>(name: S, val: Val) -> Self {
-        Column {
-            name: name.into(),
-            val: val,
-        }
-    }
-
-    #[inline]
-    fn get(&self, pos: usize) -> Option<String> {
-        self.val.get(pos)
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        self.val.len()
-    }
-    
-    #[inline]
-    pub fn add(&self, rhs: &Column) -> Result<Column, ()> {
-        let name = self.name.clone() + " + " + &rhs.name;
-        let val = self.val.add(&rhs.val)?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    pub fn sub(&self, rhs: &Column) -> Result<Column, ()> {
-        let name = self.name.clone() + " - " + &rhs.name;
-        let val = self.val.sub(&rhs.val)?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    pub fn mul(&self, rhs: &Column) -> Result<Column, ()> {
-        let name = self.name.clone() + " * " + &rhs.name;
-        let val = self.val.mul(&rhs.val)?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    pub fn div(&self, rhs: &Column) -> Result<Column, ()> {
-        let name = self.name.clone() + " / " + &rhs.name;
-        let val = self.val.div(&rhs.val)?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    fn sum(&self) -> Result<Column, &'static str> {
-        let name = "sum(".to_string() + &self.name + ")";
-        let val = self.val.sum()?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    fn sums(&self) -> Result<Column, &'static str> {
-        let name = "sums(".to_string() + &self.name + ")";
-        let val = self.val.sums()?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    fn min(&self) -> Result<Column, &'static str> {
-        let name = "min(".to_string() + &self.name + ")";
-        let val = self.val.min()?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    fn mins(&self) -> Result<Column, &'static str> {
-        let name = "min(".to_string() + &self.name + ")";
-        let val = self.val.mins()?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    fn max(&self) -> Result<Column, &'static str> {
-        let name = "max(".to_string() + &self.name + ")";
-        let val = self.val.max()?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    fn maxs(&self) -> Result<Column, &'static str> {
-        let name = "max(".to_string() + &self.name + ")";
-        let val = self.val.maxs()?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    fn product(&self) -> Result<Column, &'static str> {
-        let name = "product(".to_string() + &self.name + ")";
-        let val = self.val.product()?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    fn products(&self) -> Result<Column, &'static str> {
-        let name = "product(".to_string() + &self.name + ")";
-        let val = self.val.products()?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    fn range(&self) -> Result<Column, &'static str> {
-        let name = "range(".to_string() + &self.name + ")";
-        let val = self.val.range()?;
-        Ok(Column::from(name, val))
-    }
-
-    #[inline]
-    fn filter_gate(&self, pred: Predicate, val: Val) -> Vec<usize> {
-        self.val.filter_gate(pred, val)
+        let key_col = InMemoryColumn::from("c", Val::IntVec(key_vec));
+        let val_col = InMemoryColumn::from("a", Val::IntVec(val_vec));
+        let key_cols = vec![key_col];
+        let val_cols = vec![val_col];
+        let keyed_table = KeyedInMemoryTable::from("t", key_cols, val_cols);
+        Ok(Box::new(keyed_table))
     }
 }
 
@@ -556,7 +408,7 @@ impl Val {
     }
 
     #[inline]
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         match *self {
             Val::Int(_) => 1,
             Val::IntVec(ref vec) => vec.len(),
@@ -566,7 +418,7 @@ impl Val {
     }
 
     #[inline]
-    fn sum(&self) -> Result<Val, &'static str> {
+    pub fn sum(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
             Val::IntVec(ref vec) => Val::Int(vec_sum(vec)),
@@ -577,7 +429,7 @@ impl Val {
     }
 
     #[inline]
-    fn sums(&self) -> Result<Val, &'static str> {
+    pub fn sums(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
             Val::IntVec(ref vec) => Val::IntVec(vec_sums(vec)),
@@ -588,7 +440,7 @@ impl Val {
     }
 
     #[inline]
-    fn max(&self) -> Result<Val, &'static str> {
+    pub fn max(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
             Val::IntVec(ref vec) => Val::Int(vec_max(vec).unwrap()),//Val::Int(*vec.iter().max().unwrap()),
@@ -598,7 +450,7 @@ impl Val {
     }
 
     #[inline]
-    fn maxs(&self) -> Result<Val, &'static str> {
+    pub fn maxs(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
             Val::IntVec(ref vec) => Val::IntVec(vec_maxs(vec)),
@@ -608,7 +460,7 @@ impl Val {
     }
 
     #[inline]
-    fn min(&self) -> Result<Val, &'static str> {
+    pub fn min(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
             Val::IntVec(ref vec) => Val::Int(vec_min(vec).unwrap()),
@@ -618,7 +470,7 @@ impl Val {
     }
 
     #[inline]
-    fn mins(&self) -> Result<Val, &'static str> {
+    pub fn mins(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
             Val::IntVec(ref vec) => Val::IntVec(vec_mins(vec)),
@@ -628,7 +480,7 @@ impl Val {
     }
 
     #[inline]
-    fn product(&self) -> Result<Val, &'static str> {
+    pub fn product(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
             Val::IntVec(ref vec) => Val::Int(vec.iter().product()),
@@ -638,7 +490,7 @@ impl Val {
     }
 
     #[inline]
-    fn products(&self) -> Result<Val, &'static str> {
+    pub fn products(&self) -> Result<Val, &'static str> {
         let val = match *self {
             Val::Int(val) => Val::Int(val),
             Val::IntVec(ref vec) => Val::IntVec(vec_products(vec)),
@@ -648,7 +500,7 @@ impl Val {
     }
 
     #[inline]
-    fn range(&self) -> Result<Val, &'static str> {
+    pub fn range(&self) -> Result<Val, &'static str> {
         match *self {
             Val::Int(val) => Ok(Val::Int(val)),
             Val::IntVec(ref vec) => Ok(Val::IntVec(vec_int_range(vec))),
@@ -657,7 +509,7 @@ impl Val {
     }
 
     #[inline]
-    fn get(&self, pos: usize) -> Option<String> {
+    pub fn get(&self, pos: usize) -> Option<String> {
         match *self {
             Val::Int(val) if pos == 0 => Some(val.to_string()),
             Val::Int(_) => None,
@@ -669,7 +521,7 @@ impl Val {
     }
 
     #[inline]
-    fn filter_gate(&self, pred: Predicate, val: Val) -> Vec<usize> {
+    pub fn filter_gate(&self, pred: Predicate, val: Val) -> Vec<usize> {
         match (self, pred, val) {
             (&Val::IntVec(ref vec), Predicate::Equal, Val::Int(val)) | (&Val::Int(val), Predicate::Equal, Val::IntVec(ref vec)) => {
                 vec.iter().enumerate().filter(|&(_,x)| *x == val).map(|(i,_)| i).collect()
@@ -713,21 +565,21 @@ mod tests {
         Expr::Id(id.into())
     }
 
-    fn test_table<S: Into<String>>(id: S) -> Table {
-        let n = COL_LEN;
-        let a = Column::from("a", Val::IntVec(vec![1; n]));
-        let b = Column::from("b", Val::IntVec(vec![1; n]));
-        let c = Column::from("c", Val::IntVec(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
+    fn test_table<S: Into<String>>(id: S, n: usize) -> InMemoryTable {        
+        let a = InMemoryColumn::from("a", Val::IntVec(vec![1; n]));
+        let b = InMemoryColumn::from("b", Val::IntVec(vec![1; n]));
+        let seq: Vec<i32> = (0..n).map(|x| (x+1) as i32).collect();
+        let c = InMemoryColumn::from("c", Val::IntVec(seq));
         let cols = vec![a, b, c];
-        Table::from(id.into(), cols)
+        InMemoryTable::from(id.into(), cols)
     }
 
-    fn test_db() -> Database {
-        let t1 = test_table("t1");
-        let t2 = test_table("t2");
+    fn test_db(n: usize) -> InMemoryDb {                
+        let t1 = test_table("t1", n);
+        let t2 = test_table("t2", n);
         let tables = vec![t1, t2];
-        Database::from(tables)
-    }
+        InMemoryDb::from(tables)
+    }    
 
     #[test]
     fn val_add_intvecs() {
@@ -759,122 +611,118 @@ mod tests {
     #[test]
     fn col_add_intvec_intvec() {
         let n = COL_LEN;
-        let a = Column::from("a", Val::IntVec(vec![1; n]));
-        let b = Column::from("b", Val::IntVec(vec![1; n]));
+        let a = InMemoryColumn::from("a", Val::IntVec(vec![1; n]));
+        let b = InMemoryColumn::from("b", Val::IntVec(vec![1; n]));
         assert_eq!(
             a.add(&b).unwrap(),
-            Column::from("a + b", Val::IntVec(vec![2; n]))
+            InMemoryColumn::from("a + b", Val::IntVec(vec![2; n]))
         );
     }
 
     #[test]
     fn col_sums() {
-        let a = Column::from("a", Val::IntVec(vec![1; 5]));
+        let a = InMemoryColumn::from("a", Val::IntVec(vec![1; 5]));
         assert_eq!(
             a.sums().unwrap(),
-            Column::from("sums(a)", Val::IntVec(vec![1, 2, 3, 4, 5]))
+            InMemoryColumn::from("sums(a)", Val::IntVec(vec![1, 2, 3, 4, 5]))
         );
     }
 
     #[test]
     fn table_get() {
         let n = COL_LEN;
-        let a = Column::from("a", Val::IntVec(vec![1; n]));
-        let b = Column::from("b", Val::IntVec(vec![1; n]));
-        let c = Column::from("c", Val::IntVec(vec![1; n]));
+        let a = InMemoryColumn::from("a", Val::IntVec(vec![1; n]));
+        let b = InMemoryColumn::from("b", Val::IntVec(vec![1; n]));
+        let c = InMemoryColumn::from("c", Val::IntVec(vec![1; n]));
         let cols = vec![a, b, c];
-        let tbl = Table::from("t", cols);
+        let tbl = InMemoryTable::from("t", cols);
         assert_eq!(
             tbl.get("b").unwrap(),
-            &Column::from("b", Val::IntVec(vec![1; n]))
+            &InMemoryColumn::from("b", Val::IntVec(vec![1; n]))
         );
     }
 
     #[test]
-    fn db_get() {
-        let db = test_db();
-        let tbl = test_table("t2");
-        assert_eq!(db.get("t2").unwrap(), &tbl);
-    }
-
-    #[test]
     fn id_expr_eval() {
-        let tbl = test_table("t");
+        let tbl = test_table("t", COL_LEN);
         let expr = Expr::Id(String::from("a"));
-        let col = Column::from("a", Val::IntVec(vec![1; COL_LEN]));
+        let col = InMemoryColumn::from("a", Val::IntVec(vec![1; COL_LEN]));
         assert_eq!(expr.eval(&tbl).unwrap(), col);
     }
 
     #[test]
     fn max_expr_eval() {
-        let tbl = test_table("t");
+        let tbl = test_table("t", COL_LEN);
         let arg = Box::new(Expr::Id(String::from("c")));
         let expr = Expr::UnrFn(UnrOp::Max, arg);
-        let col = Column::from("max(c)", Val::Int(10));
+        let col = InMemoryColumn::from("max(c)", Val::Int(10));
         assert_eq!(expr.eval(&tbl).unwrap(), col);
     }
 
     #[test]
     fn min_expr_eval() {
-        let tbl = test_table("t");
+        let tbl = test_table("t", COL_LEN);
         let arg = Box::new(Expr::Id(String::from("c")));
         let expr = Expr::UnrFn(UnrOp::Min, arg);
-        let col = Column::from("min(c)", Val::Int(1));
+        let col = InMemoryColumn::from("min(c)", Val::Int(1));
         assert_eq!(expr.eval(&tbl).unwrap(), col);
     }
 
     #[test]
     fn col_add_expr_eval() {
-        let tbl = test_table("t");
+        let tbl = test_table("t", COL_LEN);
         let lhs = Box::new(id_expr("a"));
         let rhs = Box::new(id_expr("b"));
         let op = Expr::BinFn(lhs, BinOp::Add, rhs);
         let res = op.eval(&tbl).unwrap();
-        let col = Column::from("a + b", Val::IntVec(vec![2; COL_LEN]));
+        let col = InMemoryColumn::from("a + b", Val::IntVec(vec![2; COL_LEN]));
         assert_eq!(res, col);
     }
 
     #[test]
     fn col_sub_expr_eval() {
-        let tbl = test_table("t");
+        let tbl = test_table("t", COL_LEN);
         let lhs = Box::new(id_expr("a"));
         let rhs = Box::new(id_expr("b"));
         let op = Expr::BinFn(lhs, BinOp::Sub, rhs);
         let res = op.eval(&tbl).unwrap();
-        let col = Column::from("a - b", Val::IntVec(vec![0; COL_LEN]));
+        let col = InMemoryColumn::from("a - b", Val::IntVec(vec![0; COL_LEN]));
         assert_eq!(res, col);
     }
 
     #[test]
     fn query_select_from_exec() {
-        let db = test_db();
+        let n = 10;
+        let db = test_db(n);
         let qry = Query::from_str("select a+a, b-b from t1").unwrap();
-        let col1 = Column::from("a + a", Val::IntVec(vec![2; COL_LEN]));
-        let col2 = Column::from("b - b", Val::IntVec(vec![0; COL_LEN]));
-        let exp = Table::from("t1", vec![col1, col2]);
+        let col1 = InMemoryColumn::from("a + a", Val::IntVec(vec![2; COL_LEN]));
+        let col2 = InMemoryColumn::from("b - b", Val::IntVec(vec![0; COL_LEN]));
+        let exp = InMemoryTable::from("t1", vec![col1, col2]);
         let tbl = qry.exec(&db).unwrap();
         assert_eq!(tbl, exp);
     }
 
     #[test]
     fn query_select_sum_exec() {
-        let db = test_db();
+        let n = 10;
+        let db = test_db(n);
         let qry = Query::from_str("select sum(a) from t1").unwrap();
-        let col1 = Column::from("sum(a)", Val::Int(10));
-        let exp = Table::from("t1", vec![col1]);
+        let col1 = InMemoryColumn::from("sum(a)", Val::Int(10));
+        let exp = InMemoryTable::from("t1", vec![col1]);
         let tbl = qry.exec(&db).unwrap();
         assert_eq!(tbl, exp);
     }
 
     #[test]
     fn query_select_aggs_from_exec() {
-        let db = test_db();
+        let n = 10;
+        let db = test_db(n);
         let qry = Query::from_str("select max(c), min(c), sum(a), product(c) from t1").unwrap();
-        let col1 = Column::from("max(c)", Val::Int(10));
-        let col2 = Column::from("min(c)", Val::Int(1));
-        let col3 = Column::from("sum(a)", Val::Int(10));
-        let col4 = Column::from("product(c)", Val::Int(3_628_800));
-        let exp = Table::from("t1", vec![col1, col2, col3, col4]);
+        let col1 = InMemoryColumn::from("max(c)", Val::Int(10));
+        let col2 = InMemoryColumn::from("min(c)", Val::Int(1));
+        let col3 = InMemoryColumn::from("sum(a)", Val::Int(10));
+        let col4 = InMemoryColumn::from("product(c)", Val::Int(3_628_800));
+        let exp = InMemoryTable::from("t1", vec![col1, col2, col3, col4]);
         let tbl = qry.exec(&db).unwrap();
         assert_eq!(tbl, exp);
     }
@@ -991,8 +839,8 @@ mod tests {
     fn range_unr_expr_int_eval() {
         let arg = Box::new(Expr::Int(5));
         let expr = Expr::UnrFn(UnrOp::Range, arg);
-        let tbl = test_table("t");
-        let col = Column::from("range(5)", Val::IntVec(vec![0, 1, 2, 3, 4]));
+        let tbl = test_table("t", 5);
+        let col = InMemoryColumn::from("range(5)", Val::IntVec(vec![0, 1, 2, 3, 4]));
         assert_eq!(expr.eval(&tbl).unwrap(), col);
     }
 
@@ -1001,19 +849,20 @@ mod tests {
         let lhs = Box::new(Expr::Int(1));
         let rhs = Box::new(Expr::Int(5));
         let expr = Expr::BinFn(lhs, BinOp::Range, rhs);
-        let tbl = test_table("t");
-        let col = Column::from("range(1, 5)", Val::IntVec(vec![1, 2, 3, 4]));
+        let tbl = test_table("t", 4);
+        let col = InMemoryColumn::from("range(1, 5)", Val::IntVec(vec![1, 2, 3, 4]));
         assert_eq!(expr.eval(&tbl).unwrap(), col);
     }
 
     #[test]
     fn operator_precedence() {
         let query = Query::from_str("select 1+2*3,1*2+3 from t1").unwrap();
-        let db = test_db();
-        let col1 = Column::from("1 + 2 * 3", Val::Int(7));
-        let col2 = Column::from("1 * 2 + 3", Val::Int(5));
-        let tbl = Table::from("t1", vec![col1, col2]);
-        assert_eq!(query.exec(&db).unwrap(), tbl);
+        let n = 10;
+        let db = test_db(n);
+        let col1 = InMemoryColumn::from("1 + 2 * 3", Val::Int(7));
+        let col2 = InMemoryColumn::from("1 * 2 + 3", Val::Int(5));
+        let table = InMemoryTable::from("t1", vec![col1, col2]);
+        assert_eq!(query.exec(&db).unwrap(), table);
     }
 
     #[test]
@@ -1025,22 +874,22 @@ mod tests {
 
     #[test]
     fn column_intvec_range() {
-        let col = Column::from("a", Val::IntVec(vec![5i32, 4, 1, 8, 10]));
-        let exp = Column::from("range(a)", Val::IntVec(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
+        let col = InMemoryColumn::from("a", Val::IntVec(vec![5i32, 4, 1, 8, 10]));
+        let exp = InMemoryColumn::from("range(a)", Val::IntVec(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
         assert_eq!(col.range().unwrap(), exp);
     }
 
     #[test]
     fn column_int_range() {
-        let col = Column::from("a", Val::Int(10));
-        let exp = Column::from("range(a)", Val::Int(10));
+        let col = InMemoryColumn::from("a", Val::Int(10));
+        let exp = InMemoryColumn::from("range(a)", Val::Int(10));
         assert_eq!(col.range().unwrap(), exp);
     }
 
     #[test]
     fn filter_col_eq_int() {
         let filter = Filter::new(Expr::Id(String::from("c")), Predicate::Equal, Expr::Int(1));
-        let tbl = test_table("t");
+        let tbl = test_table("t", COL_LEN);
         let gate = filter.apply(&tbl).unwrap();
         let expected = vec![0]; 
         assert_eq!(gate, expected);
@@ -1049,7 +898,7 @@ mod tests {
     #[test]
     fn filter_col_lt_int() {
         let filter = Filter::new(Expr::Id(String::from("c")), Predicate::Less, Expr::Int(5));
-        let tbl = test_table("t");
+        let tbl = test_table("t", COL_LEN);
         let gate = filter.apply(&tbl).unwrap();
         let expected = vec![0,1,2,3]; 
         assert_eq!(gate, expected);
@@ -1058,16 +907,16 @@ mod tests {
     #[test]
     fn filter_col_lteq_int() {
         let filter = Filter::new(Expr::Id(String::from("c")), Predicate::LessEqual, Expr::Int(5));
-        let tbl = test_table("t");
+        let tbl = test_table("t", COL_LEN);
         let gate = filter.apply(&tbl).unwrap();
         let expected = vec![0,1,2,3, 4]; 
         assert_eq!(gate, expected);
     }   
 
-       #[test]
+    #[test]
     fn filter_col_gt_int() {
         let filter = Filter::new(Expr::Id(String::from("c")), Predicate::Greater, Expr::Int(5));
-        let tbl = test_table("t");
+        let tbl = test_table("t", COL_LEN);
         let gate = filter.apply(&tbl).unwrap();
         let expected = vec![5,6,7,8,9]; 
         assert_eq!(gate, expected);
@@ -1076,7 +925,7 @@ mod tests {
     #[test]
     fn filter_col_gteq_int() {
         let filter = Filter::new(Expr::Id(String::from("c")), Predicate::GreaterEqual, Expr::Int(5));
-        let tbl = test_table("t");
+        let tbl = test_table("t", COL_LEN);
         let gate = filter.apply(&tbl).unwrap();
         let expected = vec![4,5,6,7,8,9]; 
         assert_eq!(gate, expected);
