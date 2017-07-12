@@ -1,4 +1,4 @@
-use tables::{Table, InMemoryTable, KeyedInMemoryTable};
+use tables::{Table, InMemoryTable};
 use engine::Query;
 
 #[derive(Debug, PartialEq)]
@@ -17,19 +17,10 @@ impl InMemoryDb {
     }
 
     #[inline]
-    pub fn exec(&self, cmd: &str) -> Result<Box<Table>, &'static str> {
+    pub fn exec(&self, cmd: &str) -> Result<InMemoryTable, &'static str> {
         let query = Query::from_str(cmd)?;
-        if query.has_groupings() {
-            return query.exec_keyed(self)
-        }
         query.exec(self)
     }
-
-    #[inline]
-    pub fn exec_keyed(&self, cmd: &str) -> Result<Box<Table>, &'static str> {
-        let query = Query::from_str(cmd)?;
-        query.exec_keyed(self)
-    }    
 }
 
 #[cfg(test)]
@@ -37,7 +28,6 @@ mod tests {
     use super::*;
     use tables::*;
     use engine::*;
-    use test::Bencher;
     
     fn test_table<S: Into<String>>(id: S, n: usize) -> InMemoryTable {        
         let a = InMemoryColumn::from("a", Val::IntVec(vec![1; n]));

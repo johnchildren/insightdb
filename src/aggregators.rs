@@ -1,22 +1,23 @@
-use std::cmp::Ordering;
-use std::ops::{Add, AddAssign};
+use std::ops::AddAssign;
 
 pub trait Aggregate<T> {
     fn push(&mut self, val: T);
     fn aggregate(&self) -> &T;
+    fn box_clone(&self) -> Box<Aggregate<T>>;
 }
 
+#[derive(Clone)]
 pub struct MaxAggregate<T> {
     max: T,
 }
 
 impl<T> MaxAggregate<T> {
-    fn new(val: T) -> Self {
+    pub fn new(val: T) -> Self {
         MaxAggregate { max: val }
     }
 }
 
-impl<T:PartialOrd> Aggregate<T> for MaxAggregate<T> {
+impl<T:PartialOrd + 'static + Clone> Aggregate<T> for MaxAggregate<T> {
     fn push(&mut self, val: T)  {
         if val > self.max {
             self.max = val;
@@ -26,21 +27,26 @@ impl<T:PartialOrd> Aggregate<T> for MaxAggregate<T> {
     fn aggregate(&self) -> &T {
         &self.max
     }
+
+    fn box_clone(&self) -> Box<Aggregate<T>> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct MinAggregate<T> {
     min: T,
 }
 
-impl<T> MinAggregate<T> {
-    fn new(val: T) -> Self {
+impl<T: Clone> MinAggregate<T> {
+    pub fn new(val: T) -> Self {
         MinAggregate {
             min: val,
         }
     }
 }
 
-impl<T:PartialOrd> Aggregate<T> for MinAggregate<T> {
+impl<T:PartialOrd + Clone + 'static> Aggregate<T> for MinAggregate<T> {
     fn push(&mut self, val: T) {
         if val < self.min {
             self.min = val;
@@ -50,32 +56,38 @@ impl<T:PartialOrd> Aggregate<T> for MinAggregate<T> {
     fn aggregate(&self) -> &T {
         &self.min
     }
+
+    fn box_clone(&self) -> Box<Aggregate<T>> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct SumAggregate<T> {
     sum: T,
 }
 
-impl<T: AddAssign + Default> SumAggregate<T> {
+impl<T:Default> SumAggregate<T> {
     pub fn new() -> Self {
-        SumAggregate {
-            sum: T::default(),
-        }
+        SumAggregate::from(T::default())
     }
+
     pub fn from(val: T) -> Self {
-        SumAggregate {
-            sum: val,
-        }
+        SumAggregate { sum: val }
     }
 }
 
-impl<T:AddAssign> Aggregate<T> for SumAggregate<T> {
+impl<T:AddAssign + Clone + 'static> Aggregate<T> for SumAggregate<T> {
     fn push(&mut self, val: T) {
         self.sum += val;
     }
 
     fn aggregate(&self) -> &T {
         &self.sum
+    }
+    
+    fn box_clone(&self) -> Box<Aggregate<T>> {
+        Box::new(self.clone())
     }
 }
 
@@ -111,9 +123,6 @@ pub struct Chain<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use test::Bencher;
-
-    const COL_LEN: usize = 10;
 
     #[test]
     fn max_aggregate() {        
@@ -121,7 +130,7 @@ mod tests {
         for val in 0..10 {
             agg.push(val);
         }
-        assert_eq!(agg.aggregate(), 9);
+        assert_eq!(agg.aggregate().clone(), 9);
     }
 
     #[test]
@@ -130,6 +139,15 @@ mod tests {
         for val in 0..10 {
             agg.push(val);
         }
-        assert_eq!(agg.aggregate(), 0);
+        assert_eq!(agg.aggregate().clone(), 0);
     }
+
+    #[test]
+    fn sum_aggregate() {        
+        let mut agg = SumAggregate::new();
+        for _ in 0..10 {
+            agg.push(1);
+        }
+        assert_eq!(agg.aggregate().clone(), 10);
+    }    
 }

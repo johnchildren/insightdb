@@ -35,19 +35,20 @@ enum Token {
     Less,
     Equal,
     Greater,
+    Unique,
 }
 
 #[derive(Debug)]
-struct Scanner {
+struct Lexer {
     cmd: Vec<char>,
     pos: usize,
     tok: Token,
 }
 
-impl Scanner {
+impl Lexer {
     #[inline]
     fn new(s: &str) -> Self {
-        Scanner {
+        Lexer {
             cmd: s.chars().collect(),
             pos: 0,
             tok: Token::Underscore,
@@ -164,6 +165,7 @@ impl Scanner {
             "mins" => Token::Mins,
             "range" => Token::Range,
             "til" => Token::Til,
+            "unique" => Token::Unique,
             _ => Token::Id(id),
         };
         Ok(tok)
@@ -177,12 +179,12 @@ impl Scanner {
 
 #[derive(Debug)]
 pub struct Parser {
-    scanner: Scanner,
+    lexer: Lexer,
 }
 
 impl Parser {
     pub fn new(s: &str) -> Self {
-        Parser { scanner: Scanner::new(s) }
+        Parser { lexer: Lexer::new(s) }
     }
 
     pub fn parse(&mut self) -> Result<Query, &'static str> {
@@ -207,7 +209,7 @@ impl Parser {
             }
             match self.peek_next_token() {
                 Ok(Token::Comma) => {
-                    let _ = self.scanner.next_token().unwrap();
+                    let _ = self.lexer.next_token().unwrap();
                 }
                 Err(err) => return Err(err),
                 Ok(_) => break,
@@ -339,6 +341,12 @@ impl Parser {
                     Err(err) => return Err(err),
                 }
             }
+            Ok(Token::Unique) => {
+                match self.parse_unr_fn(UnrOp::Unique) {
+                    Ok(expr) => expr,
+                    Err(err) => return Err(err),
+                }                
+            }
             Ok(Token::StrLit(lit)) => Expr::Str(lit),                              
             Ok(_) => unimplemented!(),
             Err(err) => return Err(err),
@@ -352,7 +360,7 @@ impl Parser {
             Ok(_) => return Ok(lhs),
             Err(err) => return Err(err),
         };
-        let _ = self.scanner.next_token().unwrap();
+        let _ = self.lexer.next_token().unwrap();
         //println!("op={:?}", op);
         let rhs = match self.parse_expr() {
             Ok(expr) => expr,
@@ -488,7 +496,7 @@ impl Parser {
 
     #[inline]
     fn peek_next_token(&mut self) -> Result<Token, &'static str> {
-        match self.scanner.peek_next_token() {
+        match self.lexer.peek_next_token() {
             Ok(tok) => Ok(tok),
             Err(err) => Err(err),
         }
@@ -523,7 +531,7 @@ impl Parser {
 
     #[inline]
     fn next_token(&mut self) -> Result<Token, &'static str> {
-        self.scanner.next_token()
+        self.lexer.next_token()
     }
 }
 
@@ -532,95 +540,95 @@ mod tests {
     use super::*;
 
 #[test]
-fn scan_select_token() {
-    let mut scanner = Scanner::new("select");
-    assert_eq!(scanner.next_token(), Ok(Token::Select));
-    scanner = Scanner::new("  select");
-    assert_eq!(scanner.next_token(), Ok(Token::Select));
-    scanner = Scanner::new("  select   ");
-    assert_eq!(scanner.next_token(), Ok(Token::Select));
+fn lex_select_token() {
+    let mut lexer = Lexer::new("select");
+    assert_eq!(lexer.next_token(), Ok(Token::Select));
+    lexer = Lexer::new("  select");
+    assert_eq!(lexer.next_token(), Ok(Token::Select));
+    lexer = Lexer::new("  select   ");
+    assert_eq!(lexer.next_token(), Ok(Token::Select));
 }
 
 #[test]
 fn scan_from_token() {
-    let mut scanner = Scanner::new("from");
-    assert_eq!(scanner.next_token(), Ok(Token::From));
+    let mut lexer = Lexer::new("from");
+    assert_eq!(lexer.next_token(), Ok(Token::From));
 }
 
 #[test]
 fn scan_int_token() {
-    let mut scanner = Scanner::new("1234");
-    assert_eq!(scanner.next_token(), Ok(Token::Int(1234)));
+    let mut lexer = Lexer::new("1234");
+    assert_eq!(lexer.next_token(), Ok(Token::Int(1234)));
 }
 
 #[test]
 fn scan_by_token() {
-    let mut scanner = Scanner::new("by");
-    assert_eq!(scanner.next_token(), Ok(Token::By));
+    let mut lexer = Lexer::new("by");
+    assert_eq!(lexer.next_token(), Ok(Token::By));
 }
 
 #[test]
 fn scan_where_token() {
-    let mut scanner = Scanner::new("where");
-    assert_eq!(scanner.next_token(), Ok(Token::Where));
+    let mut lexer = Lexer::new("where");
+    assert_eq!(lexer.next_token(), Ok(Token::Where));
 }
 
 #[test]
 fn scan_id_token() {
-    let mut scanner = Scanner::new("a");
-    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("a"))));
+    let mut lexer = Lexer::new("a");
+    assert_eq!(lexer.next_token(), Ok(Token::Id(String::from("a"))));
 }
 
 #[test]
 fn scan_comma_token() {
-    let mut scanner = Scanner::new(",");
-    assert_eq!(scanner.next_token(), Ok(Token::Comma));
+    let mut lexer = Lexer::new(",");
+    assert_eq!(lexer.next_token(), Ok(Token::Comma));
 }
 
 #[test]
 fn scan_lparen_token() {
-    let mut scanner = Scanner::new("(");
-    assert_eq!(scanner.next_token(), Ok(Token::LParen));
+    let mut lexer = Lexer::new("(");
+    assert_eq!(lexer.next_token(), Ok(Token::LParen));
 }
 
 #[test]
 fn scan_rparen_token() {
-    let mut scanner = Scanner::new(")");
-    assert_eq!(scanner.next_token(), Ok(Token::RParen));
+    let mut lexer = Lexer::new(")");
+    assert_eq!(lexer.next_token(), Ok(Token::RParen));
 }
 
 #[test]
 fn scan_query() {
-    let mut scanner = Scanner::new("select a,b from t");
-    assert_eq!(scanner.next_token(), Ok(Token::Select));
-    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("a"))));
-    assert_eq!(scanner.next_token(), Ok(Token::Comma));
-    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("b"))));
-    assert_eq!(scanner.next_token(), Ok(Token::From));
-    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("t"))));
-    assert_eq!(scanner.next_token(), Ok(Token::EOF));
+    let mut lexer = Lexer::new("select a,b from t");
+    assert_eq!(lexer.next_token(), Ok(Token::Select));
+    assert_eq!(lexer.next_token(), Ok(Token::Id(String::from("a"))));
+    assert_eq!(lexer.next_token(), Ok(Token::Comma));
+    assert_eq!(lexer.next_token(), Ok(Token::Id(String::from("b"))));
+    assert_eq!(lexer.next_token(), Ok(Token::From));
+    assert_eq!(lexer.next_token(), Ok(Token::Id(String::from("t"))));
+    assert_eq!(lexer.next_token(), Ok(Token::EOF));
 }
 
 #[test]
 fn scan_range_unr_fn() {
-    let mut scanner = Scanner::new("range(a)");
-    assert_eq!(scanner.next_token(), Ok(Token::Range));
-    assert_eq!(scanner.next_token(), Ok(Token::LParen));
-    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("a"))));
-    assert_eq!(scanner.next_token(), Ok(Token::RParen));
-    assert_eq!(scanner.next_token(), Ok(Token::EOF));
+    let mut lexer = Lexer::new("range(a)");
+    assert_eq!(lexer.next_token(), Ok(Token::Range));
+    assert_eq!(lexer.next_token(), Ok(Token::LParen));
+    assert_eq!(lexer.next_token(), Ok(Token::Id(String::from("a"))));
+    assert_eq!(lexer.next_token(), Ok(Token::RParen));
+    assert_eq!(lexer.next_token(), Ok(Token::EOF));
 }
 
 #[test]
 fn scan_range_bin_fn() {
-    let mut scanner = Scanner::new("range(1, 10)");
-    assert_eq!(scanner.next_token(), Ok(Token::Range));
-    assert_eq!(scanner.next_token(), Ok(Token::LParen));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));
-    assert_eq!(scanner.next_token(), Ok(Token::Comma));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(10)));
-    assert_eq!(scanner.next_token(), Ok(Token::RParen));
-    assert_eq!(scanner.next_token(), Ok(Token::EOF));
+    let mut lexer = Lexer::new("range(1, 10)");
+    assert_eq!(lexer.next_token(), Ok(Token::Range));
+    assert_eq!(lexer.next_token(), Ok(Token::LParen));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(1)));
+    assert_eq!(lexer.next_token(), Ok(Token::Comma));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(10)));
+    assert_eq!(lexer.next_token(), Ok(Token::RParen));
+    assert_eq!(lexer.next_token(), Ok(Token::EOF));
 }
 
 #[test]
@@ -860,18 +868,18 @@ fn parse_products_expr() {
 
 #[test]
 fn scan_datetime() {
-    let mut scanner = Scanner::new("2014.03.01T00:23:02");
-    assert_eq!(scanner.next_token(), Ok(Token::Int(2014)));
-    assert_eq!(scanner.next_token(), Ok(Token::Dot));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(3)));
-    assert_eq!(scanner.next_token(), Ok(Token::Dot));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));    
-    assert_eq!(scanner.next_token(), Ok(Token::TimeSep));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(0)));
-    assert_eq!(scanner.next_token(), Ok(Token::Colon));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(23)));
-    assert_eq!(scanner.next_token(), Ok(Token::Colon));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(2)));        
+    let mut lexer = Lexer::new("2014.03.01T00:23:02");
+    assert_eq!(lexer.next_token(), Ok(Token::Int(2014)));
+    assert_eq!(lexer.next_token(), Ok(Token::Dot));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(3)));
+    assert_eq!(lexer.next_token(), Ok(Token::Dot));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(1)));    
+    assert_eq!(lexer.next_token(), Ok(Token::TimeSep));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(0)));
+    assert_eq!(lexer.next_token(), Ok(Token::Colon));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(23)));
+    assert_eq!(lexer.next_token(), Ok(Token::Colon));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(2)));        
 }
 
 #[test]
@@ -884,45 +892,52 @@ fn parse_datetime_expr() {
 
 #[test]
 fn lex_lessequal_filter() {
-    let mut scanner = Scanner::new("c<=1");
-    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("c"))));
-    assert_eq!(scanner.next_token(), Ok(Token::Less));
-    assert_eq!(scanner.next_token(), Ok(Token::Equal));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));        
+    let mut lexer = Lexer::new("c<=1");
+    assert_eq!(lexer.next_token(), Ok(Token::Id(String::from("c"))));
+    assert_eq!(lexer.next_token(), Ok(Token::Less));
+    assert_eq!(lexer.next_token(), Ok(Token::Equal));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(1)));        
 }
 
 #[test]
 fn lex_less_filter() {
-    let mut scanner = Scanner::new("c<1");
-    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("c"))));
-    assert_eq!(scanner.next_token(), Ok(Token::Less));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));        
+    let mut lexer = Lexer::new("c<1");
+    assert_eq!(lexer.next_token(), Ok(Token::Id(String::from("c"))));
+    assert_eq!(lexer.next_token(), Ok(Token::Less));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(1)));        
 }
 
 #[test]
 fn lex_ge_filter() {
-    let mut scanner = Scanner::new("c>=1");
-    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("c"))));
-    assert_eq!(scanner.next_token(), Ok(Token::Greater));
-    assert_eq!(scanner.next_token(), Ok(Token::Equal));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));        
+    let mut lexer = Lexer::new("c>=1");
+    assert_eq!(lexer.next_token(), Ok(Token::Id(String::from("c"))));
+    assert_eq!(lexer.next_token(), Ok(Token::Greater));
+    assert_eq!(lexer.next_token(), Ok(Token::Equal));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(1)));        
 }
 
 #[test]
 fn lex_g_filter() {
-    let mut scanner = Scanner::new("c>1");
-    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("c"))));
-    assert_eq!(scanner.next_token(), Ok(Token::Greater));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));        
+    let mut lexer = Lexer::new("c>1");
+    assert_eq!(lexer.next_token(), Ok(Token::Id(String::from("c"))));
+    assert_eq!(lexer.next_token(), Ok(Token::Greater));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(1)));        
 }
 
 #[test]
 fn lex_eq_filter() {
-    let mut scanner = Scanner::new("c==1");
-    assert_eq!(scanner.next_token(), Ok(Token::Id(String::from("c"))));
-    assert_eq!(scanner.next_token(), Ok(Token::Equal));
-    assert_eq!(scanner.next_token(), Ok(Token::Equal));
-    assert_eq!(scanner.next_token(), Ok(Token::Int(1)));        
+    let mut lexer = Lexer::new("c==1");
+    assert_eq!(lexer.next_token(), Ok(Token::Id(String::from("c"))));
+    assert_eq!(lexer.next_token(), Ok(Token::Equal));
+    assert_eq!(lexer.next_token(), Ok(Token::Equal));
+    assert_eq!(lexer.next_token(), Ok(Token::Int(1)));        
+}
+
+#[test]
+fn lex_string_literal() {
+    let mut lexer = Lexer::new("\"abcd\"");
+    let token = lexer.next_token().unwrap();
+    assert_eq!(token, Token::StrLit(String::from("abcd")));
 }
 
 #[test]
@@ -1013,5 +1028,23 @@ fn parse_where_empty() {
     let mut parser = Parser::new("");
     let filters = parser.parse_where();
     assert_eq!(filters, Ok(None));
+}
+
+#[test]
+fn parse_string_concatenation_expr() {
+    let mut parser = Parser::new("\"abc\"+\"def\"");
+    let expr = parser.parse_expr().unwrap();
+    let lhs = Box::new(Expr::Str(String::from("abc")));
+    let rhs = Box::new(Expr::Str(String::from("def")));
+    let expected = Expr::BinFn(lhs, BinOp::Add, rhs);
+    assert_eq!(expr, expected);
+}
+
+#[test]
+fn parse_unique_expr() {
+    let mut parser = Parser::new("unique(a)");
+    let expr = parser.parse_expr().unwrap();
+    let expected = Expr::UnrFn(UnrOp::Unique, Box::new(Expr::Id(String::from("a"))));
+    assert_eq!(expr, expected);
 }
 }

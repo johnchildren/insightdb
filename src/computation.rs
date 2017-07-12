@@ -1,4 +1,6 @@
-use std::cmp;
+use std::collections::HashSet;
+use std::cmp::{self, Eq};
+use std::hash::Hash;
 use std::iter::Sum;
 use std::ops::{Add, Div, Mul, Sub};
 
@@ -12,12 +14,14 @@ pub fn vec_add(a: &[i32], b: &[i32]) -> Vec<i32> {
         .collect()
 }
 
+/*
 #[inline]
 pub fn vec_add_mut(a: &mut [i32], b: &[i32]) {
     a.par_iter_mut().zip(b.par_iter()).for_each(
         |(x, y)| *x *= *y,
     )
 }
+*/
 
 #[inline]
 pub fn vec_sub(a: &[i32], b: &[i32]) -> Vec<i32> {
@@ -59,9 +63,9 @@ pub fn vec_max(v: &[i32]) -> Option<i32> {
 pub fn vec_max_iter(v: &[i32]) -> Option<i32> {
     let mut it = v.iter();
     it.next().map(|mut sel| {
-        println!("sel={:?}", sel);
+        //println!("sel={:?}", sel);
         for val in it {
-            println!("val={:?}", val);
+            //println!("val={:?}", val);
             if val > sel {
                 sel = val
             }
@@ -181,4 +185,16 @@ pub fn strs_add(a: &[String], b: &[String]) -> Vec<String> {
         .zip(b.iter())
         .map(|(x, y)| x.to_string() + y)
         .collect()
+}
+
+#[inline]
+pub fn vec_unique<T: Hash + Eq + Clone>(vec: &[T]) -> Vec<T> {
+    let mut unique = Vec::new();
+    let mut set = HashSet::new();
+    for val in vec {
+        if set.insert(val) {
+            unique.push(val.clone());
+        }
+    }
+    unique
 }
