@@ -1,5 +1,8 @@
 use chrono::prelude::*;
 use engine::{Expr, Query, BinOp, UnrOp, Filter, Predicate};
+use std::result;
+
+type Result<T> = result::Result<T, &'static str>;
 
 #[derive(Debug, PartialEq)]
 enum Token {
@@ -36,6 +39,7 @@ enum Token {
     Equal,
     Greater,
     Unique,
+    Deltas,
 }
 
 #[derive(Debug)]
@@ -56,7 +60,7 @@ impl Lexer {
     }
 
     #[inline]
-    fn next_token(&mut self) -> Result<Token, &'static str> {
+    fn next_token(&mut self) -> Result<Token> {
         let token = match self.cur_char() {
             Some(' ') => return self.scan_whitespace(),
             Some('a'..'z') => return self.scan_id_or_keyword(),
@@ -86,7 +90,7 @@ impl Lexer {
         Ok(token)
     }
 
-    fn scan_str_literal(&mut self) -> Result<Token, &'static str> {
+    fn scan_str_literal(&mut self) -> Result<Token> {
         self.pos += 1;
         let mut lit = String::new();
         loop {
@@ -103,7 +107,7 @@ impl Lexer {
         Ok(Token::StrLit(lit))
     }
 
-    fn scan_number(&mut self) -> Result<Token, &'static str> {
+    fn scan_number(&mut self) -> Result<Token> {
         let mut s = String::new();
         loop {
             match self.cur_char() {
@@ -123,14 +127,14 @@ impl Lexer {
         }
     }
 
-    fn peek_next_token(&mut self) -> Result<Token, &'static str> {
+    fn peek_next_token(&mut self) -> Result<Token> {
         let pos = self.pos;
         let res = self.next_token();
         self.pos = pos;
         res
     }
 
-    fn scan_whitespace(&mut self) -> Result<Token, &'static str> {
+    fn scan_whitespace(&mut self) -> Result<Token> {
         loop {
             match self.cur_char() {
                 Some(' ') => self.pos += 1,
@@ -140,7 +144,7 @@ impl Lexer {
         }
     }
 
-    fn scan_id_or_keyword(&mut self) -> Result<Token, &'static str> {
+    fn scan_id_or_keyword(&mut self) -> Result<Token> {
         let mut id = String::new();
         loop {
             match self.cur_char() {
@@ -166,6 +170,7 @@ impl Lexer {
             "range" => Token::Range,
             "til" => Token::Til,
             "unique" => Token::Unique,
+            "deltas" => Token::Deltas,
             _ => Token::Id(id),
         };
         Ok(tok)
@@ -187,7 +192,7 @@ impl Parser {
         Parser { lexer: Lexer::new(s) }
     }
 
-    pub fn parse(&mut self) -> Result<Query, &'static str> {
+    pub fn parse(&mut self) -> Result<Query> {
         let select = self.parse_select()?;
         let by = self.parse_by()?;
         let from = self.parse_from()?;
@@ -195,7 +200,7 @@ impl Parser {
         Ok(Query::from(select, by, from, filters))
     }
 
-    fn parse_select(&mut self) -> Result<Vec<Expr>, &'static str> {
+    fn parse_select(&mut self) -> Result<Vec<Expr>> {
         match self.next_token() {
             Ok(Token::Select) => (),
             Ok(_) => return Err("expected select token"),
@@ -218,7 +223,7 @@ impl Parser {
         Ok(exprs)
     }
 
-    fn parse_unr_fn(&mut self, op: UnrOp) -> Result<Expr, &'static str> {
+    fn parse_unr_fn(&mut self, op: UnrOp) -> Result<Expr> {
         match self.next_token() {
             Ok(Token::LParen) => (),
             Ok(_) => return Err("expected lparen"),
@@ -234,7 +239,7 @@ impl Parser {
     }
 
     #[inline]
-    fn parse_filter(&mut self) -> Result<Filter, &'static str> {
+    fn parse_filter(&mut self) -> Result<Filter> {
         let lhs = self.parse_expr()?;
         let op = self.parse_predicate()?;
         let rhs = self.parse_expr()?;
@@ -242,7 +247,7 @@ impl Parser {
     }
 
     #[inline]
-    fn parse_predicate(&mut self) -> Result<Predicate, &'static str> {
+    fn parse_predicate(&mut self) -> Result<Predicate> {
         match self.next_token() {
             Ok(Token::Equal) => {
                 match self.next_token() {
@@ -277,7 +282,7 @@ impl Parser {
     }
 
     #[inline]
-    fn parse_expr(&mut self) -> Result<Expr, &'static str> {
+    fn parse_expr(&mut self) -> Result<Expr> {
         let lhs = match self.next_token() {
             Ok(Token::Id(id)) => Expr::Id(id),
             Ok(Token::Int(val)) => self.parse_num(val)?,
@@ -370,7 +375,7 @@ impl Parser {
         Ok(Expr::BinFn(Box::new(lhs), op, Box::new(rhs)))
     }
 
-    fn parse_num(&mut self, val: i32) -> Result<Expr, &'static str> {
+    fn parse_num(&mut self, val: i32) -> Result<Expr> {
         match self.peek_next_token() {
             Ok(Token::Dot) => self.parse_datetime(val),
             Ok(_) => Ok(Expr::Int(val)),
@@ -378,7 +383,7 @@ impl Parser {
         }
     }
 
-    fn parse_datetime(&mut self, year: i32) -> Result<Expr, &'static str> {
+    fn parse_datetime(&mut self, year: i32) -> Result<Expr> {
         match self.next_token() {
             Ok(Token::Dot) => (),
             Ok(_) => return Err("expected dot after year"),
@@ -441,7 +446,7 @@ impl Parser {
         }
     }
 
-    fn parse_range_fn(&mut self) -> Result<Expr, &'static str> {
+    fn parse_range_fn(&mut self) -> Result<Expr> {
         if let Some(err) = self.expect(Token::LParen) {
             return Err(err);
         }
@@ -456,7 +461,7 @@ impl Parser {
         Ok(Expr::BinFn(lhs, BinOp::Range, rhs))
     }
 
-    fn parse_from(&mut self) -> Result<Expr, &'static str> {
+    fn parse_from(&mut self) -> Result<Expr> {
         match self.next_token() {
             Ok(Token::From) => (),
             Ok(_) => return Err("unexpected tok: expected from"),
@@ -468,7 +473,7 @@ impl Parser {
         }
     }
 
-    fn parse_by(&mut self) -> Result<Option<Vec<Expr>>, &'static str> {
+    fn parse_by(&mut self) -> Result<Option<Vec<Expr>>> {
         match self.peek_next_token() {
             Ok(Token::By) => {
                 let _ = self.next_token().unwrap();
@@ -495,7 +500,7 @@ impl Parser {
     }
 
     #[inline]
-    fn peek_next_token(&mut self) -> Result<Token, &'static str> {
+    fn peek_next_token(&mut self) -> Result<Token> {
         match self.lexer.peek_next_token() {
             Ok(tok) => Ok(tok),
             Err(err) => Err(err),
@@ -503,7 +508,7 @@ impl Parser {
     }
 
     #[inline]
-    fn parse_where(&mut self) -> Result<Option<Vec<Filter>>, &'static str> {
+    fn parse_where(&mut self) -> Result<Option<Vec<Filter>>> {
         match self.peek_next_token() {
             Ok(Token::Where) => {
                 let _ = self.next_token().unwrap();
@@ -530,7 +535,7 @@ impl Parser {
     }
 
     #[inline]
-    fn next_token(&mut self) -> Result<Token, &'static str> {
+    fn next_token(&mut self) -> Result<Token> {
         self.lexer.next_token()
     }
 }

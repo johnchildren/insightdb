@@ -205,6 +205,7 @@ pub enum UnrOp {
     Range,
     Til,
     Unique,
+    Deltas,
 }
 
 #[derive(Debug, PartialEq)]

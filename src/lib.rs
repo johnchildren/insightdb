@@ -13,3 +13,4 @@ pub mod computation;
 pub mod databases;
 pub mod parser;
 pub mod tables;
+pub mod grid;

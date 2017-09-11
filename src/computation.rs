@@ -2,9 +2,23 @@ use std::collections::HashSet;
 use std::cmp::{self, Eq};
 use std::hash::Hash;
 use std::iter::Sum;
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, AddAssign, Div, Mul, Sub};
 
 use rayon::prelude::*;
+
+pub fn products(v: &[i32]) -> Vec<i32> {
+    v.iter().scan(1, |x,y| {
+        *x *= *y;
+        Some(*x)
+    }).collect()
+}
+
+pub fn deltas<T: Add<Output=T> + Copy + Default + AddAssign<T>>(v: &[T]) -> Vec<T> {
+    v.iter().scan(T::default(), |x,y| {
+        *x += *y;
+        Some(*x)
+    }).collect()
+}
 
 #[inline]
 pub fn vec_add(a: &[i32], b: &[i32]) -> Vec<i32> {
@@ -13,15 +27,6 @@ pub fn vec_add(a: &[i32], b: &[i32]) -> Vec<i32> {
         .map(|(x, y)| *x + *y)
         .collect()
 }
-
-/*
-#[inline]
-pub fn vec_add_mut(a: &mut [i32], b: &[i32]) {
-    a.par_iter_mut().zip(b.par_iter()).for_each(
-        |(x, y)| *x *= *y,
-    )
-}
-*/
 
 #[inline]
 pub fn vec_sub(a: &[i32], b: &[i32]) -> Vec<i32> {
@@ -197,4 +202,23 @@ pub fn vec_unique<T: Hash + Eq + Clone>(vec: &[T]) -> Vec<T> {
         }
     }
     unique
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deltas_i32() {    
+        let v: Vec<i32> = vec![1,1,1,1,1];
+        let r = deltas(&v);
+        assert_eq!(r, vec![1,2,3,4,5]);
+    }    
+
+    #[test]
+    fn products_i32() {
+        let v = vec![1,2,3,4,5];
+        let r = products(&v);
+        assert_eq!(r, vec![1,2,6,24,120]);
+    }
 }
