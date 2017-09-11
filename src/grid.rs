@@ -109,7 +109,7 @@ impl Count for Grid {
     fn count(&self) -> Result<usize> {
         let mut count = 0;
         for db in &self.remote_dbs {
-            match server.count() {
+            match db.count() {
                 Ok(n) => count += n,
                 Err(err) => return Err(err),
             }
@@ -148,6 +148,12 @@ impl Min<i32> for RemoteDb {
 
 impl Product<i32> for RemoteDb {
     fn product(&self) -> Result<i32> {
+        unimplemented!()
+    }
+}
+
+impl Count for RemoteDb {
+    fn count(&self) -> Result<usize> {
         unimplemented!()
     }
 }
