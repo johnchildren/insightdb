@@ -455,9 +455,9 @@ impl Val {
     pub fn unique(&self) -> Result<Val, &'static str> {
         match *self {
             Val::Int(val) => Ok(Val::Int(val)),
-            Val::IntVec(ref vec) => Ok(Val::IntVec(vec_unique(vec))),
+            Val::IntVec(ref vec) => Ok(Val::IntVec(unique(vec))),
             Val::Str(ref str) => Ok(Val::Str(str.clone())),
-            Val::StrVec(ref vec) => Ok(Val::StrVec(vec_unique(vec))),
+            Val::StrVec(ref vec) => Ok(Val::StrVec(unique(vec))),
         }
     }    
 

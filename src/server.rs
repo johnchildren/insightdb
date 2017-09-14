@@ -8,9 +8,9 @@ use tokio_proto::TcpServer;
 use tokio_service::Service;
 use futures::{future, Future};
 
-pub struct QueryCodec;
+pub struct QueryStrCodec;
 
-impl Decoder for QueryCodec {
+impl Decoder for QueryStrCodec {
     type Item = String;
     type Error = io::Error;
 
@@ -33,7 +33,7 @@ fn decode_buf(buf: &mut BytesMut, i: usize) -> io::Result<Option<String>> {
     }
 }
 
-impl Encoder for QueryCodec {
+impl Encoder for QueryStrCodec {
     type Item = String;
     type Error = io::Error;
     
@@ -54,10 +54,10 @@ impl<T: AsyncRead + AsyncWrite + 'static> ServerProto<T> for QueryProto {
     type Response = String;
 
     /// A bit of boilerplate to hook in the codec:
-    type Transport = Framed<T, QueryCodec>;
+    type Transport = Framed<T, QueryStrCodec>;
     type BindTransport = Result<Self::Transport, io::Error>;
     fn bind_transport(&self, io: T) -> Self::BindTransport {
-        Ok(io.framed(QueryCodec))
+        Ok(io.framed(QueryStrCodec))
     }
 }
 

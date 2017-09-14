@@ -193,7 +193,7 @@ pub fn strs_add(a: &[String], b: &[String]) -> Vec<String> {
 }
 
 #[inline]
-pub fn vec_unique<T: Hash + Eq + Clone>(vec: &[T]) -> Vec<T> {
+pub fn unique<T: Hash + Eq + Clone>(vec: &[T]) -> Vec<T> {
     let mut unique = Vec::new();
     let mut set = HashSet::new();
     for val in vec {
@@ -220,5 +220,16 @@ mod tests {
         let v = vec![1,2,3,4,5];
         let r = products(&v);
         assert_eq!(r, vec![1,2,6,24,120]);
+    }
+
+    #[test]
+    fn unique_strings() {
+        let v: Vec<String> = (0..5).map(|x| x.to_string()).collect();
+        let mut input = v.clone();
+        for _ in 0..2 {
+            input.extend(v.iter().cloned())
+        }
+        let r = unique(&v);
+        assert_eq!(r, v);
     }
 }

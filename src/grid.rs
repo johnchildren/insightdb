@@ -1,30 +1,62 @@
 use std::net::IpAddr;
 use std::result;
 
+use engine::Expr;
+
+struct QueryData;
+
+pub struct GridQueryCmd {
+    select: Vec<GridExpr>,
+    from: String,
+}
+
+pub struct Data;
+
 type Result<T> = result::Result<T, String>;
 
+pub trait GridQuery {
+    fn exec(&self, cmd: &GridQueryCmd) -> Result<Data>;
+}
+
+enum GridExpr {
+    Avg(Expr, Expr),
+    Reg(Expr),
+}
+
+
+impl GridQuery for Grid {
+    fn exec(&self, cmd: &GridQueryCmd) -> Result<Data> {
+        unimplemented!()
+    }
+}
+
+pub struct Params {
+    table: String,
+    column: String,
+}
+
 pub trait Sum<T> {
-    fn sum(&self) -> Result<T>;
+    fn sum(&self, params: &Params) -> Result<T>;
 }
 
 pub trait Max<T> {
-    fn max(&self) -> Result<T>;
+    fn max(&self, params: &Params) -> Result<T>;
 }
 
 pub trait Min<T> {
-    fn min(&self) -> Result<T>;
+    fn min(&self,  params: &Params) -> Result<T>;
 }
 
 pub trait Product<T> {
-    fn product(&self) -> Result<T>;
+    fn product(&self, params: &Params) -> Result<T>;
 }
 
 pub trait Average {
-    fn average(&self) -> Result<f64>;
+    fn average(&self, params: &Params) -> Result<f64>;
 }
 
 pub trait Count {
-    fn count(&self) -> Result<usize>;
+    fn count(&self, params: &Params) -> Result<usize>;
 }
 
 pub struct Grid {
@@ -38,10 +70,10 @@ impl Grid {
 }
 
 impl Sum<i32> for Grid {
-    fn sum(&self) -> Result<i32> {
+    fn sum(&self, params: &Params) -> Result<i32> {
         let mut sum = 0;
         for db in &self.remote_dbs {
-            match db.sum() {
+            match db.sum(params) {
                 Ok(val) => sum += val,
                 Err(err) => return Err(err),
             }
@@ -51,10 +83,10 @@ impl Sum<i32> for Grid {
 }
 
 impl Max<i32> for Grid {
-    fn max(&self) -> Result<i32> {
+    fn max(&self, params: &Params) -> Result<i32> {
         let mut max = 0;
         for db in &self.remote_dbs {
-            match db.max() {
+            match db.max(params) {
                 Ok(val) if val > max => max = val,
                 _ => continue,
                 Err(err) => return Err(err),
@@ -65,10 +97,10 @@ impl Max<i32> for Grid {
 }
 
 impl Min<i32> for Grid {
-    fn min(&self) -> Result<i32> {
+    fn min(&self, params: &Params) -> Result<i32> {
         let mut min = 0;
         for db in &self.remote_dbs {
-            match db.min() {
+            match db.min(params) {
                 Ok(val) if val < min => min = val,
                 Ok(_) => continue,
                 Err(err) => return Err(err),
@@ -79,10 +111,10 @@ impl Min<i32> for Grid {
 }
 
 impl Product<i32> for Grid {
-    fn product(&self) -> Result<i32> {
+    fn product(&self, params: &Params) -> Result<i32> {
         let mut product = 1;
         for db in &self.remote_dbs {
-            match db.product() {
+            match db.product(params) {
                 Ok(val) => product *= val,
                 Err(err) => return Err(err),
             }
@@ -92,12 +124,12 @@ impl Product<i32> for Grid {
 }
 
 impl Average for Grid {
-    fn average(&self) -> Result<f64> {
-        let sum = match self.sum() {
+    fn average(&self, params: &Params) -> Result<f64> {
+        let sum = match self.sum(params) {
             Ok(val) => val as f64,
             Err(err) => return Err(err),
         };
-        let count = match self.count() {
+        let count = match self.count(params) {
             Ok(n) => n as f64,
             Err(err) => return Err(err),
         };
@@ -106,10 +138,10 @@ impl Average for Grid {
 }
 
 impl Count for Grid {
-    fn count(&self) -> Result<usize> {
+    fn count(&self, params: &Params) -> Result<usize> {
         let mut count = 0;
         for db in &self.remote_dbs {
-            match db.count() {
+            match db.count(params) {
                 Ok(n) => count += n,
                 Err(err) => return Err(err),
             }
@@ -129,31 +161,31 @@ impl RemoteDb {
 }
 
 impl Sum<i32> for RemoteDb {
-    fn sum(&self) -> Result<i32> {
+    fn sum(&self, params: &Params) -> Result<i32> {
         unimplemented!();
     } 
 }
 
 impl Max<i32> for RemoteDb {
-    fn max(&self) -> Result<i32> {
+    fn max(&self, params: &Params) -> Result<i32> {
         unimplemented!()
     }
 }
 
 impl Min<i32> for RemoteDb {
-    fn min(&self) -> Result<i32> {
+    fn min(&self, params: &Params) -> Result<i32> {
         unimplemented!()
     }
 }
 
 impl Product<i32> for RemoteDb {
-    fn product(&self) -> Result<i32> {
+    fn product(&self, params: &Params) -> Result<i32> {
         unimplemented!()
     }
 }
 
 impl Count for RemoteDb {
-    fn count(&self) -> Result<usize> {
+    fn count(&self, params: &Params) -> Result<usize> {
         unimplemented!()
     }
 }

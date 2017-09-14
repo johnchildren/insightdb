@@ -1,7 +1,6 @@
 use std::cmp;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
-use std::hash::Hash;
 use std::io::Write;
 use std::ops::AddAssign;
 
