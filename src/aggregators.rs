@@ -35,7 +35,7 @@ pub struct MinAggregator<T> {
 
 impl<T: Clone> MinAggregator<T> {
     pub fn new(val: T) -> Self {
-        MinAggregate {
+        Self {
             min: val,
         }
     }
@@ -54,17 +54,17 @@ impl<T:PartialOrd + Clone + 'static> Aggregate<T> for MinAggregator<T> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct SumAggregate<T> {
+pub struct SumAggregator<T> {
     sum: T,
 }
 
 impl<T:Default> SumAggregator<T> {
-    pub fn new() -> Self {
-        Self::from(T::default())
+    pub fn new() -> SumAggregator<T> {
+        SumAggregator::from(T::default())
     }
 
-    pub fn from(val: T) -> Self {
-        Self { sum: val }
+    pub fn from(val: T) -> SumAggregator<T> {
+        SumAggregator { sum: val }
     }
 }
 

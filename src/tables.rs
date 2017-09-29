@@ -4,7 +4,7 @@ use std::fmt::{self, Display};
 use std::io::Write;
 use std::ops::AddAssign;
 
-use aggregators::{Aggregate, SumAggregate};
+use aggregators::{Aggregate, SumAggregator};
 use engine::{Predicate, Val};
 use tabwriter::TabWriter;
 use rayon::prelude::ParallelSliceMut;
@@ -97,7 +97,7 @@ pub struct KeyedBTreeTable {
     name: String,
     keyed_cols: Vec<String>,
     cols: Vec<String>,
-    data: BTreeMap<i32, SumAggregate<i32>>,
+    data: BTreeMap<i32, SumAggregator<i32>>,
     len: usize,
 }
 
@@ -106,7 +106,7 @@ impl KeyedBTreeTable {
         name: S,
         keyed_cols: Vec<String>,
         cols: Vec<String>,
-        data: BTreeMap<i32, SumAggregate<i32>>,
+        data: BTreeMap<i32, SumAggregator<i32>>,
     ) -> Self {
         let n = data.len();
         KeyedBTreeTable {
@@ -120,7 +120,7 @@ impl KeyedBTreeTable {
 }
 
 pub struct KeyedBTreeBuilder {
-    aggs: BTreeMap<i32, SumAggregate<i32>>,
+    aggs: BTreeMap<i32, SumAggregator<i32>>,
 }
 
 impl KeyedBTreeBuilder {
@@ -129,7 +129,7 @@ impl KeyedBTreeBuilder {
     }
 
     fn push(&mut self, key: i32, val: i32) {
-        self.aggs.entry(key).or_insert(SumAggregate::new()).push(val);
+        self.aggs.entry(key).or_insert(SumAggregator::new()).push(val);
     }
 
     fn build(self) -> KeyedBTreeTable {
@@ -141,7 +141,7 @@ impl KeyedBTreeBuilder {
 
 pub struct KeyedTableBuilder {
     keys: Vec<i32>,
-    vals: Vec<SumAggregate<i32>>,
+    vals: Vec<SumAggregator<i32>>,
     key_map: HashMap<i32, usize>,
 }
 
@@ -160,7 +160,7 @@ impl KeyedTableBuilder {
         let i = self.key_map.entry(key.clone()).or_insert(n).clone();
         if i >= n {
             self.keys.push(key);        
-            self.vals.push(SumAggregate::from(val));
+            self.vals.push(SumAggregator::from(val));
         } else {
             self.vals[i].push(val);
         }
@@ -177,11 +177,11 @@ impl KeyedTableBuilder {
 pub struct KeyedTable {
     name: String,
     key_col: InMemoryColumn,
-    aggs: Vec<SumAggregate<i32>>,
+    aggs: Vec<SumAggregator<i32>>,
 }
 
 impl KeyedTable {
-    pub fn from<S:Into<String>>(name: S, key_col: InMemoryColumn, aggs: Vec<SumAggregate<i32>>) -> Self {
+    pub fn from<S:Into<String>>(name: S, key_col: InMemoryColumn, aggs: Vec<SumAggregator<i32>>) -> Self {
         KeyedTable{ name: name.into(), key_col: key_col, aggs: aggs }
     }
 

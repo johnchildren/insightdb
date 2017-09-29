@@ -7,12 +7,14 @@ authors = ["jaupe"]
 tabwriter = "1"
 chrono = "0.4"
 rayon = "*"
+# tokio
 bytes = "0.4"
 futures = "0.1"
 tokio-io = "0.1"
 tokio-core = "0.1"
 tokio-proto = "0.1"
 tokio-service = "0.1"
+# serialization
 serde_derive = "1.0"
 serde = "1.0"
 serde_json = "1.0"
