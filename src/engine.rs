@@ -1,11 +1,9 @@
-use std::collections::{BTreeMap, BinaryHeap};
 use std::fmt;
 
 use parser::Parser;
 use tables::*;
 use computation::*;
 use databases::InMemoryDb;
-use aggregators::*;
 
 use chrono::prelude::*;
 
@@ -34,7 +32,7 @@ impl Filter {
         }
     }
 
-    fn apply(&self, table: &InMemoryTable) -> Result<Vec<usize>, &'static str> {
+    pub fn apply(&self, table: &InMemoryTable) -> Result<Vec<usize>, &'static str> {
         match (&self.lhs, &self.op, &self.rhs) {
             (&Expr::Id(ref id), op, &Expr::Int(val)) => {
                 let col = table.get(id)?;

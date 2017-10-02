@@ -2,7 +2,6 @@ use std::cmp;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 use std::io::Write;
-use std::ops::AddAssign;
 
 use aggregators::{Aggregate, SumAggregator};
 use engine::{Predicate, Val};
@@ -120,19 +119,19 @@ impl KeyedBTreeTable {
 }
 
 pub struct KeyedBTreeBuilder {
-    aggs: BTreeMap<i32, SumAggregator<i32>>,
+    pub aggs: BTreeMap<i32, SumAggregator<i32>>,
 }
 
 impl KeyedBTreeBuilder {
-    fn new() -> Self {
+    pub fn new() -> Self {
         KeyedBTreeBuilder { aggs: BTreeMap::new() }
     }
 
-    fn push(&mut self, key: i32, val: i32) {
+    pub fn push(&mut self, key: i32, val: i32) {
         self.aggs.entry(key).or_insert(SumAggregator::new()).push(val);
     }
 
-    fn build(self) -> KeyedBTreeTable {
+    pub fn build(self) -> KeyedBTreeTable {
         let key_cols = vec![String::from("c")];
         let cols = vec![String::from("sum(a)")];
         KeyedBTreeTable::from("t", key_cols, cols, self.aggs)
@@ -175,7 +174,7 @@ impl KeyedTableBuilder {
 }
  
 pub struct KeyedTable {
-    name: String,
+    pub name: String,
     key_col: InMemoryColumn,
     aggs: Vec<SumAggregator<i32>>,
 }

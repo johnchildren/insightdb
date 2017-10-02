@@ -3,11 +3,9 @@ use std::result;
 
 use engine::Expr;
 
-struct QueryData;
-
 pub struct GridQueryCmd {
-    select: Vec<GridExpr>,
-    from: String,
+    pub select: Vec<GridExpr>,
+    pub from: String,
 }
 
 pub struct Data;
@@ -18,21 +16,21 @@ pub trait GridQuery {
     fn exec(&self, cmd: &GridQueryCmd) -> Result<Data>;
 }
 
-enum GridExpr {
+pub enum GridExpr {
     Avg(Expr, Expr),
     Reg(Expr),
 }
 
 
 impl GridQuery for Grid {
-    fn exec(&self, cmd: &GridQueryCmd) -> Result<Data> {
+    fn exec(&self, _: &GridQueryCmd) -> Result<Data> {
         unimplemented!()
     }
 }
 
 pub struct Params {
-    table: String,
-    column: String,
+    pub table: String,
+    pub column: String,
 }
 
 pub trait Sum<T> {
@@ -64,7 +62,7 @@ pub struct Grid {
 }
 
 impl Grid {
-    fn from(remote_dbs: Vec<RemoteDb>) -> Self {
+    pub fn from(remote_dbs: Vec<RemoteDb>) -> Self {
         Self{ remote_dbs } 
     }
 }
@@ -88,8 +86,8 @@ impl Max<i32> for Grid {
         for db in &self.remote_dbs {
             match db.max(params) {
                 Ok(val) if val > max => max = val,
-                _ => continue,
                 Err(err) => return Err(err),
+                _ => continue,
             }
         }
         Ok(max)
@@ -151,7 +149,7 @@ impl Count for Grid {
 }
 
 pub struct RemoteDb {
-    host: IpAddr,
+    pub host: IpAddr,
 }
 
 impl RemoteDb {
@@ -161,31 +159,31 @@ impl RemoteDb {
 }
 
 impl Sum<i32> for RemoteDb {
-    fn sum(&self, params: &Params) -> Result<i32> {
+    fn sum(&self, _: &Params) -> Result<i32> {
         unimplemented!();
     } 
 }
 
 impl Max<i32> for RemoteDb {
-    fn max(&self, params: &Params) -> Result<i32> {
+    fn max(&self, _: &Params) -> Result<i32> {
         unimplemented!()
     }
 }
 
 impl Min<i32> for RemoteDb {
-    fn min(&self, params: &Params) -> Result<i32> {
+    fn min(&self, _: &Params) -> Result<i32> {
         unimplemented!()
     }
 }
 
 impl Product<i32> for RemoteDb {
-    fn product(&self, params: &Params) -> Result<i32> {
+    fn product(&self, _: &Params) -> Result<i32> {
         unimplemented!()
     }
 }
 
 impl Count for RemoteDb {
-    fn count(&self, params: &Params) -> Result<usize> {
+    fn count(&self, _: &Params) -> Result<usize> {
         unimplemented!()
     }
 }
