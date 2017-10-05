@@ -1,3 +1,6 @@
+use std::fs::File;
+use std::io;
+use std::path::Path;
 use std::sync::{Arc, RwLock};
 use config::*;
 
@@ -15,6 +18,11 @@ impl Database {
             .collect();
         Self { name, tables }
     }
+
+    pub fn from_path<P:AsRef<Path>>(path: P) -> io::Result<Self> {
+        let cfg = DbConfig::from(path).unwrap();
+        Ok(Database::new(&cfg))
+    }
 }
 
 pub struct Table {
@@ -26,7 +34,7 @@ impl Table {
     pub fn new(config: &TableConfig) -> Self {
         let name = config.name.clone();
         let n = config.size;
-        let columns = config.columns.iter().map(|cfg| Column::from(cfg)).collect();
+        let columns = config.columns.iter().map(|cfg| Column::from(cfg, n)).collect();
         Self {name, columns}
     }
 }
@@ -71,9 +79,8 @@ impl InMemoryDb {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tables::*;
-    use engine::*;
     
+    /*
     fn test_table<S: Into<String>>(id: S, n: usize) -> InMemoryTable {        
         let a = InMemoryColumn::from("a", Val::IntVec(vec![1; n]));
         let b = InMemoryColumn::from("b", Val::IntVec(vec![1; n]));
@@ -89,6 +96,7 @@ mod tests {
         let tables = vec![t1, t2];
         InMemoryDb::from(tables)
     }
+    */
 
     fn test_db_config() -> DbConfig {
         DbConfig {
@@ -126,21 +134,67 @@ mod tests {
     }
 
     #[test]
+    fn db_from_path() {
+        let db = Database::from_path("config.json").unwrap();
+        assert_eq!(db.name, "db1");
+        assert_eq!(db.tables.len(), 2);
+        let n = 10;
+        let t = &db.tables[0].read().unwrap(); 
+        assert_eq!(t.name, "t1");
+        assert_eq!(t.columns.len(), 2);
+        let col = &t.columns[0];
+        assert_eq!(col.name, "c1");
+        assert_eq!(col.data.len(), 0);
+        assert_eq!(col.data.capacity(), n);
+        let col = &t.columns[1];
+        assert_eq!(col.name, "c2");
+        assert_eq!(col.data.len(), 0);
+        assert_eq!(col.data.capacity(), n);
+        let t = &db.tables[1].read().unwrap(); 
+        assert_eq!(t.name, "t2");
+        assert_eq!(t.columns.len(), 3);
+        let col = &t.columns[0];
+        assert_eq!(col.name, "c1");
+        assert_eq!(col.data.len(), 0);
+        assert_eq!(col.data.capacity(), n);
+        let col = &t.columns[1];
+        assert_eq!(col.name, "c2");
+        assert_eq!(col.data.len(), 0);
+        assert_eq!(col.data.capacity(), n);
+        let col = &t.columns[2];
+        assert_eq!(col.name, "c3");
+        assert_eq!(col.data.len(), 0);
+        assert_eq!(col.data.capacity(), n);        
+    }
+
+    /*
+    #[test]
     fn db_get() {
         let n = 10;
         let db = test_db(n);
         let tbl = test_table("t2", n);
         assert_eq!(db.get("t2").unwrap(), &tbl);
     }
+    */
 
     #[test]
     fn db_open() {
         let cfg = test_db_config();
-        let db = Database::open(&cfg);
+        let db = Database::new(&cfg);
         assert_eq!(db.name, "db1");
         assert_eq!(db.tables.len(), 2);
-        let t1 = db.tables[0];
+        let t1_lock = db.tables[0].read();
+        let t1 = t1_lock.unwrap();
         assert_eq!(t1.name, "t1");
         assert_eq!(t1.columns.len(), 2);
+        let c1 = &t1.columns[0];  
+        assert_eq!(c1.name, "c1");
+        let n = 10;
+        assert_eq!(c1.data.len(), 0);
+        assert_eq!(c1.data.capacity(), n);
+        let c2 = &t1.columns[1];
+        assert_eq!(c2.name, "c2");
+        assert_eq!(c2.data.len(), 0);
+        assert_eq!(c2.data.capacity(), n);
     }
 }

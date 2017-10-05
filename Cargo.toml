@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["jaupe"]
 
 [dependencies]
+toml = "0.4"
 tabwriter = "1"
 chrono = "0.4"
 rayon = "*"
