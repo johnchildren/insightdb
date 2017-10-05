@@ -1,0 +1,37 @@
+{
+    "name": "db1",
+    "tables": [
+        {
+            "name": "t1",
+            "columns": [
+                {
+                    "name": "c1",
+                    "col_type": "int"
+                },
+                {
+                    "name": "c2",
+                    "col_type": "int"
+                }                        
+            ],
+            "size": 10
+        },
+        {
+            "name": "t2",
+            "columns": [
+                {
+                    "name": "c1",
+                    "col_type": "int"
+                },
+                {
+                    "name": "c2",
+                    "col_type": "int"
+                },    
+                {
+                    "name": "c3",
+                    "col_type": "int"
+                }                                         
+            ],
+            "size": 10
+        }                  
+    ]
+}
