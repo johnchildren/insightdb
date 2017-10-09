@@ -530,6 +530,7 @@ impl fmt::Display for Val {
 mod tests {
     use super::*;
     use test::Bencher;
+    use std::collections::BTreeMap;
     use std::collections::HashSet;
     use rayon::prelude::ParallelSliceMut;
 
@@ -1007,18 +1008,5 @@ mod tests {
             }
         });
     }
-
-    #[bench]
-    fn bench_keys_bheap_sort(b: &mut Bencher) {
-        let n = SORT_LEN;
-        b.iter(|| {
-            let mut heap = BinaryHeap::new();
-            for _ in 0..REPEAT_LEN {
-                for i in 0..n {
-                    heap.push(i);
-                }
-            }
-        });
-    }    
 
 }

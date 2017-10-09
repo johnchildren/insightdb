@@ -1,4 +1,3 @@
-use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -14,14 +13,20 @@ impl Database {
         let name = config.name.clone();
         let tables = config.tables
             .iter()
-            .map(|cfg| Arc::new(RwLock::new(Table::new(cfg))))
-            .collect();
+            .map(|tbl_cfg| {
+                println!("creating table: {}", tbl_cfg.name);
+                Arc::new(RwLock::new(Table::new(tbl_cfg)))
+            }).collect();
         Self { name, tables }
     }
 
-    pub fn from_path<P:AsRef<Path>>(path: P) -> io::Result<Self> {
-        let cfg = DbConfig::from(path).unwrap();
+    pub fn from_path<P:AsRef<Path>>(path: P) -> Result<Self, String> {
+        let cfg = DbConfig::from(path)?;
         Ok(Database::new(&cfg))
+    }
+
+    pub fn start(&self) {
+        println!("starting engine");
     }
 }
 
@@ -34,8 +39,15 @@ impl Table {
     pub fn new(config: &TableConfig) -> Self {
         let name = config.name.clone();
         let n = config.size;
-        let columns = config.columns.iter().map(|cfg| Column::from(cfg, n)).collect();
+        let columns = config.columns.iter().map(|cfg| {
+            println!("\t{}", cfg.name);
+            Column::from_cfg(cfg, n)
+        }).collect();
         Self {name, columns}
+    }
+
+    pub fn from<S:Into<String>>(name: S, cols: Vec<Column>) -> Self {
+        Self{name: name.into(), columns: cols}
     }
 }
 
@@ -45,58 +57,20 @@ pub struct Column {
 }
 
 impl Column {
-    fn from(cfg: &ColumnConfig, n: usize) -> Self {
+    pub fn from_cfg(cfg: &ColumnConfig, n: usize) -> Self {
         let name = cfg.name.clone();
         let data = Vec::with_capacity(n);
         Self { name, data }
     }
-}
 
-/*
-#[derive(Debug, PartialEq)]
-pub struct InMemoryDb {
-    tables: Vec<InMemoryTable>,
-}
-
-impl InMemoryDb {
-    pub fn from(tables: Vec<InMemoryTable>) -> Self {
-        InMemoryDb { tables: tables }
-    }
-
-    #[inline]
-    pub fn get(&self, name: &str) -> Option<&InMemoryTable> {
-        self.tables.iter().find(|tbl| tbl.name == name)
-    }
-
-    #[inline]
-    pub fn exec(&self, cmd: &str) -> Result<InMemoryTable, &'static str> {
-        let query = Query::from_str(cmd)?;
-        query.exec(self)
+    pub fn from(name: String, data: Vec<i32>) -> Self {
+        Column{name, data}
     }
 }
-*/
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
-    /*
-    fn test_table<S: Into<String>>(id: S, n: usize) -> InMemoryTable {        
-        let a = InMemoryColumn::from("a", Val::IntVec(vec![1; n]));
-        let b = InMemoryColumn::from("b", Val::IntVec(vec![1; n]));
-        let seq: Vec<i32> = (0..n).map(|x| (x+1) as i32).collect();
-        let c = InMemoryColumn::from("c", Val::IntVec(seq));
-        let cols = vec![a, b, c];
-        InMemoryTable::from(id.into(), cols)
-    }
-
-    fn test_db(n: usize) -> InMemoryDb {                
-        let t1 = test_table("t1", n);
-        let t2 = test_table("t2", n);
-        let tables = vec![t1, t2];
-        InMemoryDb::from(tables)
-    }
-    */
 
     fn test_db_config() -> DbConfig {
         DbConfig {
@@ -151,6 +125,7 @@ mod tests {
         assert_eq!(col.data.len(), 0);
         assert_eq!(col.data.capacity(), n);
         let t = &db.tables[1].read().unwrap(); 
+        let n = 20;
         assert_eq!(t.name, "t2");
         assert_eq!(t.columns.len(), 3);
         let col = &t.columns[0];
@@ -166,16 +141,6 @@ mod tests {
         assert_eq!(col.data.len(), 0);
         assert_eq!(col.data.capacity(), n);        
     }
-
-    /*
-    #[test]
-    fn db_get() {
-        let n = 10;
-        let db = test_db(n);
-        let tbl = test_table("t2", n);
-        assert_eq!(db.get("t2").unwrap(), &tbl);
-    }
-    */
 
     #[test]
     fn db_open() {

@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["jaupe"]
 
 [dependencies]
+clap = "~2.26"
+csv = "*"
 toml = "0.4"
 tabwriter = "1"
 chrono = "0.4"
